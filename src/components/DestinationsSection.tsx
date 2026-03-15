@@ -1,78 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import L, { type DivIcon } from "leaflet";
+import { useNavigate } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
-import destKathmandu from "@/assets/dest-kathmandu.jpg";
-import destPokhara from "@/assets/dest-pokhara.jpg";
-import destEverest from "@/assets/dest-everest.jpg";
-import destChitwan from "@/assets/dest-chitwan.jpg";
-import destAnnapurna from "@/assets/dest-annapurna.jpg";
-import destLumbini from "@/assets/dest-lumbini.jpg";
-
-type CrowdLevel = "Quiet" | "Moderate" | "Busy";
+import { destinations, distanceKm, type CrowdLevel } from "@/data/destinations";
 
 const crowdColors: Record<CrowdLevel, { bg: string; text: string }> = {
   Quiet:    { bg: "#dcfce7", text: "#166534" },
   Moderate: { bg: "#fef9c3", text: "#854d0e" },
   Busy:     { bg: "#fee2e2", text: "#991b1b" },
 };
-
-const destinations = [
-  {
-    id: "kathmandu",
-    name: "Kathmandu Valley",
-    img: destKathmandu,
-    category: "Heritage & Culture",
-    coords: [27.7172, 85.324],
-    area: "Bagmati Region",
-    crowd: "Busy" as CrowdLevel,
-  },
-  {
-    id: "pokhara",
-    name: "Pokhara",
-    img: destPokhara,
-    category: "Lake & Mountains",
-    coords: [28.2096, 83.9856],
-    area: "Gandaki Region",
-    crowd: "Moderate" as CrowdLevel,
-  },
-  {
-    id: "everest",
-    name: "Everest Region",
-    img: destEverest,
-    category: "Trekking & Adventure",
-    coords: [27.932, 86.761],
-    area: "Khumbu Region",
-    crowd: "Busy" as CrowdLevel,
-  },
-  {
-    id: "chitwan",
-    name: "Chitwan",
-    img: destChitwan,
-    category: "Wildlife Safari",
-    coords: [27.5291, 84.3542],
-    area: "Terai Region",
-    crowd: "Quiet" as CrowdLevel,
-  },
-  {
-    id: "annapurna",
-    name: "Annapurna Circuit",
-    img: destAnnapurna,
-    category: "Trekking",
-    coords: [28.5961, 83.8203],
-    area: "Annapurna Region",
-    crowd: "Moderate" as CrowdLevel,
-  },
-  {
-    id: "lumbini",
-    name: "Lumbini",
-    img: destLumbini,
-    category: "Spiritual Pilgrimage",
-    coords: [27.4833, 83.276],
-    area: "Lumbini Region",
-    crowd: "Quiet" as CrowdLevel,
-  },
-];
 
 const markerIcon = (active: boolean): DivIcon =>
   L.divIcon({
@@ -82,27 +19,12 @@ const markerIcon = (active: boolean): DivIcon =>
     iconAnchor: [active ? 10 : 7, active ? 10 : 7],
   });
 
-const EARTH_RADIUS_KM = 6371;
-
-const distanceKm = (from: [number, number], to: [number, number]) => {
-  const [lat1, lon1] = from;
-  const [lat2, lon2] = to;
-  const latDelta = ((lat2 - lat1) * Math.PI) / 180;
-  const lonDelta = ((lon2 - lon1) * Math.PI) / 180;
-
-  const haversineA =
-    Math.sin(latDelta / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(lonDelta / 2) ** 2;
-
-  const haversineC = 2 * Math.atan2(Math.sqrt(haversineA), Math.sqrt(1 - haversineA));
-  return EARTH_RADIUS_KM * haversineC;
-};
-
 const DestinationsSection = () => {
   const mapNodeRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const linesLayerRef = useRef<L.LayerGroup | null>(null);
+  const navigate = useNavigate();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -216,8 +138,9 @@ const DestinationsSection = () => {
       attributionControl: false,
     }).setView([28.2, 84.1], 7);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 20,
+      subdomains: "abcd",
     }).addTo(map);
 
     markersLayerRef.current = L.layerGroup().addTo(map);
@@ -275,7 +198,7 @@ const DestinationsSection = () => {
       marker.on("click", () => {
         setSelectedId(destination.id);
         setHoveredId(null);
-        map.flyTo(destination.coords, 8, { duration: 0.6 });
+        navigate(`/destinations/${destination.id}`);
       });
 
       const { bg, text } = crowdColors[destination.crowd];
@@ -306,7 +229,7 @@ const DestinationsSection = () => {
         }).addTo(linesLayer);
       });
     }
-  }, [activeDestination, activeId, nearbyDestinations]);
+  }, [activeDestination, activeId, navigate, nearbyDestinations]);
 
   const handleBackToAll = () => {
     setSelectedId(null);
@@ -380,7 +303,7 @@ const DestinationsSection = () => {
                     onMouseLeave={() => setHoveredId(null)}
                     onClick={() => {
                       setSelectedId(destination.id);
-                      mapRef.current?.flyTo(destination.coords, 8, { duration: 0.6 });
+                      navigate(`/destinations/${destination.id}`);
                     }}
                     className="w-full text-left p-3 rounded-xl border border-border bg-background hover:bg-accent/60 transition-colors"
                   >
