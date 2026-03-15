@@ -42,11 +42,11 @@ const DestinationDetail = () => {
 
         <div className="container absolute inset-0 z-10 flex flex-col justify-between py-6 md:py-8">
           <Link
-            to="/"
+            to={`/?selected=${destination.id}#destinations`}
             className="inline-flex w-fit items-center gap-2 rounded-full border border-white/40 bg-black/30 px-4 py-2 text-sm text-white hover:bg-black/45 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to destinations
+            Back to map
           </Link>
 
           <div className="pb-3 md:pb-6 text-white">

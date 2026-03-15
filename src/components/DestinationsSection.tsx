@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import L, { type DivIcon } from "leaflet";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import { destinations, distanceKm, type CrowdLevel } from "@/data/destinations";
 
@@ -19,14 +19,21 @@ const markerIcon = (active: boolean): DivIcon =>
     iconAnchor: [active ? 10 : 7, active ? 10 : 7],
   });
 
+const DEFAULT_MAP_CENTER: [number, number] = [28.2, 84.1];
+
+const getValidDestinationId = (value: string | null) =>
+  destinations.some((destination) => destination.id === value) ? value : null;
+
 const DestinationsSection = () => {
   const mapNodeRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const linesLayerRef = useRef<L.LayerGroup | null>(null);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedQueryId = searchParams.get("selected");
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => getValidDestinationId(selectedQueryId));
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [viewportIds, setViewportIds] = useState<Set<string>>(
     () => new Set(destinations.map((d) => d.id)),
@@ -39,6 +46,11 @@ const DestinationsSection = () => {
   }>({ loading: false, text: null, error: null, destId: null });
 
   const activeId = hoveredId ?? selectedId;
+
+  const selectedDestination = useMemo(
+    () => destinations.find((destination) => destination.id === selectedId) ?? null,
+    [selectedId],
+  );
 
   const activeDestination = useMemo(
     () => destinations.find((destination) => destination.id === activeId) ?? null,
@@ -64,6 +76,49 @@ const DestinationsSection = () => {
   );
 
   const visibleDestinations = activeDestination ? nearbyDestinations : viewportDestinations;
+
+  useEffect(() => {
+    const nextSelectedId = getValidDestinationId(selectedQueryId);
+
+    setSelectedId((currentSelectedId) =>
+      currentSelectedId === nextSelectedId ? currentSelectedId : nextSelectedId,
+    );
+
+    if (nextSelectedId) {
+      const destination = destinations.find((item) => item.id === nextSelectedId);
+
+      if (destination) {
+        mapRef.current?.flyTo(destination.coords, 8, { duration: 0.6 });
+      }
+
+      if (window.location.hash === "#destinations") {
+        document.getElementById("destinations")?.scrollIntoView({ block: "start" });
+      }
+    }
+  }, [selectedQueryId]);
+
+  const syncSelectedQuery = (destinationId: string | null) => {
+    setSearchParams(
+      (currentParams) => {
+        const nextParams = new URLSearchParams(currentParams);
+
+        if (destinationId) {
+          nextParams.set("selected", destinationId);
+        } else {
+          nextParams.delete("selected");
+        }
+
+        return nextParams;
+      },
+      { replace: true },
+    );
+  };
+
+  const handleSelectDestination = (destinationId: string) => {
+    setSelectedId(destinationId);
+    setHoveredId(null);
+    syncSelectedQuery(destinationId);
+  };
 
   useEffect(() => {
     if (!selectedId) {
@@ -136,7 +191,7 @@ const DestinationsSection = () => {
       zoomControl: true,
       scrollWheelZoom: true,
       attributionControl: false,
-    }).setView([28.2, 84.1], 7);
+    }).setView(DEFAULT_MAP_CENTER, 7);
 
     L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
@@ -146,6 +201,22 @@ const DestinationsSection = () => {
     markersLayerRef.current = L.layerGroup().addTo(map);
     linesLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+
+    const initialSelectedId = getValidDestinationId(new URLSearchParams(window.location.search).get("selected"));
+
+    if (initialSelectedId) {
+      const initialDestination = destinations.find((destination) => destination.id === initialSelectedId);
+
+      if (initialDestination) {
+        map.whenReady(() => {
+          map.flyTo(initialDestination.coords, 8, { duration: 0.6 });
+
+          if (window.location.hash === "#destinations") {
+            document.getElementById("destinations")?.scrollIntoView({ block: "start" });
+          }
+        });
+      }
+    }
 
     const updateViewport = () => {
       const bounds = map.getBounds();
@@ -196,9 +267,7 @@ const DestinationsSection = () => {
       });
 
       marker.on("click", () => {
-        setSelectedId(destination.id);
-        setHoveredId(null);
-        navigate(`/destinations/${destination.id}`);
+        handleSelectDestination(destination.id);
       });
 
       const { bg, text } = crowdColors[destination.crowd];
@@ -229,12 +298,13 @@ const DestinationsSection = () => {
         }).addTo(linesLayer);
       });
     }
-  }, [activeDestination, activeId, navigate, nearbyDestinations]);
+  }, [activeDestination, activeId, nearbyDestinations]);
 
   const handleBackToAll = () => {
     setSelectedId(null);
     setHoveredId(null);
-    mapRef.current?.flyTo([28.2, 84.1], 7, { duration: 0.6 });
+    syncSelectedQuery(null);
+    mapRef.current?.flyTo(DEFAULT_MAP_CENTER, 7, { duration: 0.6 });
   };
 
   return (
@@ -302,8 +372,7 @@ const DestinationsSection = () => {
                     onMouseEnter={() => setHoveredId(destination.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     onClick={() => {
-                      setSelectedId(destination.id);
-                      navigate(`/destinations/${destination.id}`);
+                      handleSelectDestination(destination.id);
                     }}
                     className="w-full text-left p-3 rounded-xl border border-border bg-background hover:bg-accent/60 transition-colors"
                   >
@@ -363,6 +432,16 @@ const DestinationsSection = () => {
                 <p className="text-xs text-destructive/80 leading-relaxed">{aiInsight.error}</p>
               ) : (
                 <p className="text-xs text-foreground/75 leading-relaxed">{aiInsight.text}</p>
+              )}
+
+              {selectedDestination && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/destinations/${selectedDestination.id}`)}
+                  className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  View Details
+                </button>
               )}
             </div>
           </div>
