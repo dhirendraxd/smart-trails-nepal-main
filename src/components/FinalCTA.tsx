@@ -49,7 +49,7 @@ const FinalCTA = () => {
               </p>
               <div className="flex flex-wrap gap-3">
                 <a
-                  href="#destinations"
+                  href="/explore-nepal"
                   className="inline-block bg-white text-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:bg-white/90 transition-all"
                 >
                   Explore Destinations

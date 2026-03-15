@@ -41,7 +41,7 @@ const CultureBanner = () => {
                 day-by-day itinerary suggestions, difficulty ratings, and insider tips from experienced trekkers.
               </p>
               <a
-                href="#destinations"
+                href="/explore-nepal"
                 className="inline-block bg-white text-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:bg-white/90 transition-all"
               >
                 Explore Destinations

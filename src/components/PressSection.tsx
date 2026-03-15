@@ -22,7 +22,7 @@ const PressSection = () => {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <a
-              href="#destinations"
+              href="/explore-nepal"
               className="bg-primary text-primary-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:opacity-90 transition-opacity"
             >
               Explore Destinations

@@ -55,7 +55,7 @@ const HeroSection = () => {
           transition={{ duration: 0.8, delay: 0.45 }}
         >
           <a
-            href="#destinations"
+            href="/explore-nepal"
             className="w-full sm:w-auto text-center bg-white text-foreground font-medium text-sm px-10 py-4 rounded-full hover:bg-white/90 transition-all"
           >
             Explore Destinations

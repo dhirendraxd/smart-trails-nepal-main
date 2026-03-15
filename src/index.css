@@ -121,3 +121,46 @@
 .smart-trails-tooltip::before {
   border-top-color: hsl(var(--border)) !important;
 }
+
+.explore-map-shell .leaflet-container {
+  cursor: grab;
+  background: linear-gradient(180deg, rgba(247, 245, 241, 0.9), rgba(240, 236, 229, 0.8));
+}
+
+.explore-map-shell .leaflet-grab,
+.explore-map-shell .leaflet-grab .leaflet-interactive {
+  cursor: grab;
+}
+
+.explore-map-shell .leaflet-dragging .leaflet-container,
+.explore-map-shell .leaflet-dragging .leaflet-grab,
+.explore-map-shell .leaflet-dragging .leaflet-grab .leaflet-interactive,
+.explore-map-shell .leaflet-grabbing {
+  cursor: grabbing;
+}
+
+.explore-map-shell .leaflet-control-zoom {
+  margin-top: 3.5rem;
+  margin-right: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.explore-map-shell .leaflet-top.leaflet-left .leaflet-control {
+  margin-left: 1rem;
+}
+
+.explore-map-shell .leaflet-control-zoom a {
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-bottom-color: hsl(var(--border));
+  background: rgba(255, 255, 255, 0.94);
+  color: hsl(var(--foreground));
+}
+
+.explore-map-shell .leaflet-control-zoom a:hover {
+  background: hsl(var(--accent));
+}

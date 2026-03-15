@@ -20,10 +20,10 @@ const footerLinks = {
     { label: "Packing Lists", href: "#services" },
   ],
   Destinations: [
-    { label: "Kathmandu", href: "#destinations" },
-    { label: "Pokhara", href: "#destinations" },
-    { label: "Everest Region", href: "#destinations" },
-    { label: "Annapurna", href: "#destinations" },
+    { label: "Kathmandu", href: "/explore-nepal?selected=kathmandu" },
+    { label: "Pokhara", href: "/explore-nepal?selected=pokhara" },
+    { label: "Everest Region", href: "/explore-nepal?selected=everest" },
+    { label: "Annapurna", href: "/explore-nepal?selected=annapurna" },
   ],
   About: [
     { label: "How It Works", href: "#about" },

@@ -6,14 +6,14 @@ const features = [
     icon: Map,
     title: "Interactive Tourism Heatmap",
     description: "See real-time tourist density across Nepal's destinations on an interactive map. Identify crowded and less crowded places instantly.",
-    link: "#destinations",
+    link: "/explore-nepal",
     linkLabel: "Open Map",
   },
   {
     icon: CloudSun,
     title: "Tourist Flow Forecast",
     description: "Analyze tourism trends and predict short-term tourist activity. Know if a location will get busier or quieter in the coming weeks.",
-    link: "#destinations",
+    link: "/explore-nepal",
     linkLabel: "See Forecast",
   },
   {
@@ -34,7 +34,7 @@ const features = [
     icon: Compass,
     title: "Alternative Destination Suggestions",
     description: "When a destination is crowded, discover similar but less crowded locations for a better experience without the congestion.",
-    link: "#destinations",
+    link: "/explore-nepal",
     linkLabel: "Explore",
   },
   {
