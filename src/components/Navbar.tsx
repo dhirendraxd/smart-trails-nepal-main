@@ -6,11 +6,13 @@ import { motion, useMotionValueEvent, useScroll, AnimatePresence } from "framer-
 export interface NavbarProps {
   variant?: "hero" | "solid";
   extraLinks?: { label: string; href: string; icon?: typeof Map }[];
+  linksOverride?: { label: string; href: string; icon?: typeof Map }[];
+  fixed?: boolean;
   rightSlot?: ReactNode;
 }
 
 const baseLinks = [
-  { label: "Destinations", href: "#destinations", icon: Map },
+  { label: "Destinations", href: "/explore-nepal", icon: Map },
   { label: "Services", href: "#services", icon: Briefcase },
   { label: "Gallery", href: "#gallery", icon: Image },
 ];
@@ -24,13 +26,13 @@ const scrollToHash = (href: string) => {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 };
 
-const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
+const Navbar = ({ variant = "hero", extraLinks, linksOverride, fixed = false, rightSlot }: NavbarProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pastHero, setPastHero] = useState(false);
   const { scrollY } = useScroll();
 
   const isHero = variant === "hero";
-  const links = [...baseLinks, ...(extraLinks || [])];
+  const links = linksOverride ?? [...baseLinks, ...(extraLinks || [])];
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     if (isHero) setPastHero(latest > window.innerHeight * 0.8);
@@ -83,8 +85,8 @@ const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <a
-                href="#destinations"
-                onClick={(e) => handleLinkClick(e, "#destinations")}
+                href="/explore-nepal"
+                onClick={(e) => handleLinkClick(e, "/explore-nepal")}
                 className="hidden sm:inline-block font-medium text-sm text-white/80 border border-white/15 hover:border-white/30 hover:text-white px-5 sm:px-6 py-2 sm:py-2.5 rounded-full backdrop-blur-[2px] transition-all duration-300"
                 style={{ textShadow: "0 1px 1px rgba(0,0,0,0.2)" }}
               >
@@ -141,8 +143,8 @@ const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
 
                   <div className="border-t border-white/10 mt-3 pt-3">
                     <a
-                      href="#destinations"
-                      onClick={(e) => handleLinkClick(e, "#destinations")}
+                      href="/explore-nepal"
+                      onClick={(e) => handleLinkClick(e, "/explore-nepal")}
                       className="block text-sm font-medium bg-white/10 text-white border border-white/20 hover:bg-white/15 px-6 py-3 rounded-full text-center transition-colors"
                     >
                       Explore Destinations
@@ -159,7 +161,7 @@ const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 h-14 border-b border-border bg-card/80 backdrop-blur-md">
+      <nav className={`${fixed ? "fixed inset-x-0 top-0" : "sticky top-0"} z-50 h-14 border-b border-border bg-card/80 backdrop-blur-md`}>
         <div className="container flex items-center justify-between h-full">
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <Mountain className="w-4 h-4 text-foreground" />
@@ -183,8 +185,8 @@ const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
           <div className="flex items-center gap-2 sm:gap-3">
             {rightSlot}
             <a
-              href="#destinations"
-              onClick={(e) => handleLinkClick(e, "#destinations")}
+              href="/explore-nepal"
+              onClick={(e) => handleLinkClick(e, "/explore-nepal")}
               className="hidden sm:block text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Explore Destinations
@@ -233,8 +235,8 @@ const Navbar = ({ variant = "hero", extraLinks, rightSlot }: NavbarProps) => {
 
                 <div className="border-t border-border mt-1 pt-2">
                   <a
-                    href="#destinations"
-                    onClick={(e) => handleLinkClick(e, "#destinations")}
+                    href="/explore-nepal"
+                    onClick={(e) => handleLinkClick(e, "/explore-nepal")}
                     className="block text-sm font-medium text-center text-foreground bg-accent hover:bg-accent/80 px-3 py-3 rounded-xl transition-colors"
                   >
                     Explore Destinations

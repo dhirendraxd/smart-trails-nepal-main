@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import L, { type DivIcon } from "leaflet";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import { destinations, distanceKm, type CrowdLevel } from "@/data/destinations";
+import { nepalBorderGeoJson } from "@/data/nepalBorder";
 
 const crowdColors: Record<CrowdLevel, { bg: string; text: string }> = {
   Quiet:    { bg: "#dcfce7", text: "#166534" },
@@ -19,7 +19,12 @@ const markerIcon = (active: boolean): DivIcon =>
     iconAnchor: [active ? 10 : 7, active ? 10 : 7],
   });
 
-const DEFAULT_MAP_CENTER: [number, number] = [28.2, 84.1];
+const NEPAL_MAP_BOUNDS: [[number, number], [number, number]] = [
+  [26.35, 80.0],
+  [30.45, 88.3],
+];
+
+const MAP_FIT_PADDING = L.point(20, 20);
 
 const getValidDestinationId = (value: string | null) =>
   destinations.some((destination) => destination.id === value) ? value : null;
@@ -52,30 +57,30 @@ const DestinationsSection = () => {
     [selectedId],
   );
 
-  const activeDestination = useMemo(
-    () => destinations.find((destination) => destination.id === activeId) ?? null,
-    [activeId],
-  );
-
   const nearbyDestinations = useMemo(() => {
-    if (!activeDestination) return [];
+    if (!selectedDestination) return [];
 
     return destinations
-      .filter((destination) => destination.id !== activeDestination.id)
+      .filter((destination) => destination.id !== selectedDestination.id)
       .map((destination) => ({
         ...destination,
-        distance: distanceKm(activeDestination.coords, destination.coords),
+        distance: distanceKm(selectedDestination.coords, destination.coords),
       }))
       .filter((destination) => destination.distance <= 220)
       .sort((first, second) => first.distance - second.distance);
-  }, [activeDestination]);
+  }, [selectedDestination]);
 
   const viewportDestinations = useMemo(
     () => destinations.filter((d) => viewportIds.has(d.id)),
     [viewportIds],
   );
 
-  const visibleDestinations = activeDestination ? nearbyDestinations : viewportDestinations;
+  const visibleDestinations = selectedDestination ? nearbyDestinations : viewportDestinations;
+
+  const hasDistance = (
+    destination: (typeof visibleDestinations)[number],
+  ): destination is (typeof nearbyDestinations)[number] =>
+    "distance" in destination && typeof destination.distance === "number";
 
   useEffect(() => {
     const nextSelectedId = getValidDestinationId(selectedQueryId);
@@ -187,15 +192,59 @@ const DestinationsSection = () => {
   useEffect(() => {
     if (!mapNodeRef.current || mapRef.current) return;
 
+    const nepalBounds = L.latLngBounds(NEPAL_MAP_BOUNDS);
+    const dragBounds = nepalBounds.pad(0.22);
+
     const map = L.map(mapNodeRef.current, {
       zoomControl: true,
       scrollWheelZoom: true,
+      dragging: true,
+      doubleClickZoom: true,
+      touchZoom: true,
+      boxZoom: false,
+      inertia: true,
+      inertiaDeceleration: 2200,
+      easeLinearity: 0.2,
       attributionControl: false,
-    }).setView(DEFAULT_MAP_CENTER, 7);
+      maxBounds: dragBounds,
+      maxBoundsViscosity: 0.35,
+      zoomSnap: 0.25,
+    });
+
+    map.fitBounds(nepalBounds, { animate: false, padding: MAP_FIT_PADDING });
+
+    const minZoom = map.getBoundsZoom(nepalBounds, false, MAP_FIT_PADDING);
+    map.setMinZoom(minZoom);
 
     L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 20,
       subdomains: "abcd",
+      noWrap: true,
+    }).addTo(map);
+
+    L.geoJSON(nepalBorderGeoJson, {
+      interactive: false,
+      style: {
+        color: "rgba(16, 185, 129, 0.30)",
+        weight: 9,
+        opacity: 0.95,
+        fillColor: "#10b981",
+        fillOpacity: 0.025,
+        lineCap: "round",
+        lineJoin: "round",
+      },
+    }).addTo(map);
+
+    L.geoJSON(nepalBorderGeoJson, {
+      interactive: false,
+      style: {
+        color: "#10b981",
+        weight: 3.2,
+        opacity: 1,
+        fillOpacity: 0,
+        lineCap: "round",
+        lineJoin: "round",
+      },
     }).addTo(map);
 
     markersLayerRef.current = L.layerGroup().addTo(map);
@@ -288,9 +337,9 @@ const DestinationsSection = () => {
       marker.addTo(markersLayer);
     });
 
-    if (activeDestination) {
+    if (selectedDestination) {
       nearbyDestinations.forEach((destination) => {
-        L.polyline([activeDestination.coords, destination.coords], {
+        L.polyline([selectedDestination.coords, destination.coords], {
           color: "hsl(var(--highlight))",
           weight: 2,
           dashArray: "6 6",
@@ -298,50 +347,22 @@ const DestinationsSection = () => {
         }).addTo(linesLayer);
       });
     }
-  }, [activeDestination, activeId, nearbyDestinations]);
+  }, [selectedDestination, activeId, nearbyDestinations]);
 
   const handleBackToAll = () => {
     setSelectedId(null);
     setHoveredId(null);
     syncSelectedQuery(null);
-    mapRef.current?.flyTo(DEFAULT_MAP_CENTER, 7, { duration: 0.6 });
+    mapRef.current?.flyToBounds(NEPAL_MAP_BOUNDS, { duration: 0.6, padding: MAP_FIT_PADDING });
   };
 
   return (
-    <section id="destinations" className="py-24 md:py-32 bg-secondary/30">
-      <div className="container">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between mb-12 md:mb-16 gap-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground mb-4 font-medium">
-              Explore Nepal
-            </p>
-            <h2 className="text-3xl md:text-5xl font-display font-bold">
-              Where to Visit?
-            </h2>
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            <a
-              href="#services"
-              className="inline-block text-sm font-medium border border-border px-6 py-3 rounded-full hover:bg-accent transition-colors"
-            >
-              View Featured Tools →
-            </a>
-          </motion.div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[350px_1fr] gap-5">
-          <div className="bg-card border border-border rounded-2xl p-5 h-[580px] flex flex-col">
-            <div className="flex-1 overflow-y-auto min-h-0">
+    <section id="destinations" className="h-full bg-secondary/30">
+      <div className="h-full w-full py-2 md:py-3 pl-2 md:pl-3 pr-0">
+        <div className="rounded-2xl overflow-hidden border border-border bg-card h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+            <div className="h-full p-4 md:p-5 flex flex-col border-b border-border lg:border-b-0 lg:border-r">
+              <div className="flex-1 overflow-hidden min-h-0">
             {selectedId && (
               <button
                 type="button"
@@ -352,18 +373,25 @@ const DestinationsSection = () => {
               </button>
             )}
 
-            <div className="mb-4">
+            <div className="mb-3">
               <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Explore</p>
               <h3 className="text-xl font-display font-semibold mt-1">
-                {activeDestination
-                  ? `${nearbyDestinations.length} places near ${activeDestination.name}`
+                {selectedDestination
+                  ? `${nearbyDestinations.length} places near ${selectedDestination.name}`
                   : `${viewportDestinations.length} destination${viewportDestinations.length !== 1 ? "s" : ""} in view`}
               </h3>
+              <p className="text-xs text-muted-foreground/75 mt-1.5 leading-relaxed">
+                {selectedDestination
+                  ? `Showing destinations within roughly 220 km of ${selectedDestination.name}.`
+                  : "Drag the map to explore Nepal, then click a pin to reveal nearby places."}
+              </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {visibleDestinations.map((destination) => {
-                const distanceLabel = "distance" in destination ? `${destination.distance.toFixed(0)} km away` : null;
+                const distanceLabel = hasDistance(destination) ? `${destination.distance.toFixed(0)} km away` : null;
+                const isSelected = destination.id === selectedId;
+                const isHovered = destination.id === hoveredId;
 
                 return (
                   <button
@@ -374,13 +402,19 @@ const DestinationsSection = () => {
                     onClick={() => {
                       handleSelectDestination(destination.id);
                     }}
-                    className="w-full text-left p-3 rounded-xl border border-border bg-background hover:bg-accent/60 transition-colors"
+                    className={`w-full text-left p-2.5 rounded-xl border bg-background transition-all duration-200 ${
+                      isSelected
+                        ? "border-emerald-400/60 bg-accent/45 shadow-sm"
+                        : isHovered
+                          ? "border-border/80 bg-accent/25"
+                          : "border-border hover:border-border/80 hover:bg-accent/30"
+                    }`}
                   >
                     <div className="flex gap-3">
                       <img
                         src={destination.img}
                         alt={destination.name}
-                        className="h-16 w-16 rounded-lg object-cover shrink-0"
+                        className="h-14 w-14 rounded-lg object-cover shrink-0 transition-transform duration-200"
                         loading="lazy"
                       />
                       <div className="min-w-0">
@@ -394,60 +428,64 @@ const DestinationsSection = () => {
                 );
               })}
 
-              {activeDestination && nearbyDestinations.length === 0 && (
+              {selectedDestination && nearbyDestinations.length === 0 && (
                 <p className="text-sm text-muted-foreground py-3">
                   No nearby destinations found within this selected region.
                 </p>
               )}
 
-              {!activeDestination && viewportDestinations.length === 0 && (
+              {!selectedDestination && viewportDestinations.length === 0 && (
                 <p className="text-sm text-muted-foreground py-3">
                   No destinations in the current map view. Pan or zoom out to see more.
                 </p>
               )}
             </div>
-            </div>
-
-            <div className="border-t border-border pt-3 mt-2 shrink-0">
-              <div className="flex items-center gap-2 mb-2">
-                <span
-                  className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"
-                  style={{ boxShadow: "0 0 0 3px rgba(16,185,129,0.18)" }}
-                />
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  AI Insight
-                </span>
               </div>
-              {!selectedId ? (
-                <p className="text-xs text-muted-foreground/70 leading-relaxed">
-                  Select a destination pin to get an AI-powered travel insight.
-                </p>
-              ) : aiInsight.loading ? (
-                <div className="space-y-1.5 py-0.5">
-                  <div className="h-2.5 bg-muted animate-pulse rounded-full w-full" />
-                  <div className="h-2.5 bg-muted animate-pulse rounded-full w-5/6" />
-                  <div className="h-2.5 bg-muted animate-pulse rounded-full w-4/6" />
+
+              <div className="border-t border-border pt-3 mt-2 shrink-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"
+                    style={{ boxShadow: "0 0 0 3px rgba(16,185,129,0.18)" }}
+                  />
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    AI Insight
+                  </span>
                 </div>
-              ) : aiInsight.error ? (
-                <p className="text-xs text-destructive/80 leading-relaxed">{aiInsight.error}</p>
-              ) : (
-                <p className="text-xs text-foreground/75 leading-relaxed">{aiInsight.text}</p>
-              )}
+                {!selectedId ? (
+                  <p className="text-xs text-muted-foreground/70 leading-relaxed">
+                    Select a destination pin to get an AI-powered travel insight.
+                  </p>
+                ) : aiInsight.loading ? (
+                  <div className="space-y-1.5 py-0.5">
+                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-full" />
+                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-5/6" />
+                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-4/6" />
+                  </div>
+                ) : aiInsight.error ? (
+                  <p className="text-xs text-destructive/80 leading-relaxed">{aiInsight.error}</p>
+                ) : (
+                  <p className="text-xs text-foreground/75 leading-relaxed">{aiInsight.text}</p>
+                )}
 
-              {selectedDestination && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/destinations/${selectedDestination.id}`)}
-                  className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-                >
-                  View Details
-                </button>
-              )}
+                {selectedDestination && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/destinations/${selectedDestination.id}`)}
+                    className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                  >
+                    View Details
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="relative h-[580px] rounded-2xl overflow-hidden border border-border bg-card">
-            <div ref={mapNodeRef} className="absolute inset-0" />
+            <div className="relative h-full min-h-[340px] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0))]">
+              <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-full border border-white/55 bg-white/94 px-3 py-1.5 text-[11px] font-medium tracking-[0.12em] text-foreground/75 shadow-sm backdrop-blur-sm uppercase">
+                Drag Map • Click Pins
+              </div>
+              <div ref={mapNodeRef} className="explore-map-shell absolute inset-0" />
+            </div>
           </div>
         </div>
       </div>
