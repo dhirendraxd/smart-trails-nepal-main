@@ -1,6 +1,6 @@
 import { ArrowLeft, CalendarDays, MapPin, Mountain, Route, Users, Wallet } from "lucide-react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { KATHMANDU_COORDS, distanceKm, getDestinationById, type CrowdLevel } from "@/data/destinations";
+import { KATHMANDU_COORDS, distanceKm, getDestinationById, getNearbyDestinations, type CrowdLevel } from "@/data/destinations";
 import DestinationPhotoGallery from "@/components/DestinationPhotoGallery";
 
 const DestinationDetail = () => {
@@ -12,6 +12,7 @@ const DestinationDetail = () => {
   }
 
   const distanceFromKathmandu = distanceKm(KATHMANDU_COORDS, destination.coords);
+  const nearbyDestinations = getNearbyDestinations(destination.id, 4);
 
   const crowdLevelClass: Record<CrowdLevel, string> = {
     Quiet: "bg-emerald-100 text-emerald-700",
@@ -98,6 +99,55 @@ const DestinationDetail = () => {
             destinationType={destination.category}
             photos={destination.gallery}
           />
+        </div>
+
+        <div className="mt-12 md:mt-16">
+          <div className="flex items-end justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-display font-bold">Nearby destinations</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Keep exploring nearby places around {destination.name}.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto pb-2">
+            <div className="grid grid-flow-col auto-cols-[86%] sm:auto-cols-[48%] lg:auto-cols-[32%] xl:auto-cols-[24%] gap-4">
+              {nearbyDestinations.map((nearbyDestination) => (
+                <Link
+                  key={nearbyDestination.id}
+                  to={`/destinations/${nearbyDestination.id}`}
+                  className="group overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                >
+                  <div className="aspect-[16/10] overflow-hidden">
+                    <img
+                      src={nearbyDestination.img}
+                      alt={nearbyDestination.name}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold leading-tight">{nearbyDestination.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {nearbyDestination.distance.toFixed(0)} km away
+                        </p>
+                      </div>
+
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${crowdLevelClass[nearbyDestination.crowd]}`}
+                      >
+                        {nearbyDestination.crowd}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
     </div>

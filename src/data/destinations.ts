@@ -32,6 +32,10 @@ export type Destination = {
   gallery: DestinationPhoto[];
 };
 
+export type DestinationWithDistance = Destination & {
+  distance: number;
+};
+
 export const KATHMANDU_COORDS: [number, number] = [27.7172, 85.324];
 const EARTH_RADIUS_KM = 6371;
 
@@ -317,3 +321,18 @@ export const destinations: Destination[] = [
 ];
 
 export const getDestinationById = (id: string) => destinations.find((destination) => destination.id === id) ?? null;
+
+export const getNearbyDestinations = (id: string, limit = 4): DestinationWithDistance[] => {
+  const destination = getDestinationById(id);
+
+  if (!destination) return [];
+
+  return destinations
+    .filter((candidate) => candidate.id !== destination.id)
+    .map((candidate) => ({
+      ...candidate,
+      distance: distanceKm(destination.coords, candidate.coords),
+    }))
+    .sort((first, second) => first.distance - second.distance)
+    .slice(0, limit);
+};
