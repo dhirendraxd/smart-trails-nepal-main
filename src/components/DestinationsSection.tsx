@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L, { type DivIcon } from "leaflet";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
-import { destinations, distanceKm, type CrowdLevel } from "@/data/destinations";
-import { nepalBorderGeoJson } from "@/data/nepalBorder";
+import { Input } from "@/components/ui/input";
+import {
+  destinations,
+  distanceKm,
+  type CrowdLevel,
+  type DestinationWithDistance,
+} from "@/data/destinations";
+import { getLocalExploreForDestination } from "@/data/localExplore";
 
 const crowdColors: Record<CrowdLevel, { bg: string; text: string }> = {
   Quiet:    { bg: "#dcfce7", text: "#166534" },
@@ -25,6 +31,63 @@ const NEPAL_MAP_BOUNDS: [[number, number], [number, number]] = [
 ];
 
 const MAP_FIT_PADDING = L.point(20, 20);
+const LIVE_NEARBY_RADIUS_KM = 240;
+const LIVE_NEARBY_LIMIT = 3;
+
+type LiveLocationState = {
+  status: "locating" | "ready" | "error" | "unsupported";
+  coords: [number, number] | null;
+  accuracyM: number | null;
+  error: string | null;
+};
+
+const getGeolocationErrorMessage = (error: GeolocationPositionError) => {
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return "Location permission was denied. Enable it to see live nearby popular places.";
+    case error.POSITION_UNAVAILABLE:
+      return "Live location is unavailable right now. Try moving to an open area or retry.";
+    case error.TIMEOUT:
+      return "Location request timed out. Please retry with a stronger signal.";
+    default:
+      return "Unable to read your location at the moment.";
+  }
+};
+
+const isWithinNepalBounds = (coords: [number, number]) => {
+  const [[minLat, minLng], [maxLat, maxLng]] = NEPAL_MAP_BOUNDS;
+  const [lat, lng] = coords;
+  return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+};
+
+const getDestinationMatches = (query: string, excludedId?: string | null) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  const candidates = destinations.filter((destination) => destination.id !== excludedId);
+
+  if (!normalizedQuery) {
+    return candidates.slice(0, 5);
+  }
+
+  return candidates
+    .map((destination) => {
+      const name = destination.name.toLowerCase();
+      const area = destination.area.toLowerCase();
+      const category = destination.category.toLowerCase();
+
+      let score = Number.POSITIVE_INFINITY;
+
+      if (name.startsWith(normalizedQuery)) score = 0;
+      else if (name.includes(normalizedQuery)) score = 1;
+      else if (area.includes(normalizedQuery)) score = 2;
+      else if (category.includes(normalizedQuery)) score = 3;
+
+      return { destination, score };
+    })
+    .filter((result) => Number.isFinite(result.score))
+    .sort((first, second) => first.score - second.score || first.destination.name.localeCompare(second.destination.name))
+    .map((result) => result.destination)
+    .slice(0, 5);
+};
 
 const getValidDestinationId = (value: string | null) =>
   destinations.some((destination) => destination.id === value) ? value : null;
@@ -33,22 +96,32 @@ const DestinationsSection = () => {
   const mapNodeRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const linesLayerRef = useRef<L.LayerGroup | null>(null);
-  const navigate = useNavigate();
+  const userLocationLayerRef = useRef<L.LayerGroup | null>(null);
+  const hasCenteredOnLiveRef = useRef(false);
+  const plannerRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedQueryId = searchParams.get("selected");
 
   const [selectedId, setSelectedId] = useState<string | null>(() => getValidDestinationId(selectedQueryId));
+  const [fromId, setFromId] = useState<string | null>(null);
+  const [fromQuery, setFromQuery] = useState("");
+  const [toQuery, setToQuery] = useState(() => {
+    const initialDestinationId = getValidDestinationId(selectedQueryId);
+    return initialDestinationId
+      ? destinations.find((destination) => destination.id === initialDestinationId)?.name ?? ""
+      : "";
+  });
+  const [activePlannerField, setActivePlannerField] = useState<"from" | "to" | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [liveLocation, setLiveLocation] = useState<LiveLocationState>({
+    status: "locating",
+    coords: null,
+    accuracyM: null,
+    error: null,
+  });
   const [viewportIds, setViewportIds] = useState<Set<string>>(
     () => new Set(destinations.map((d) => d.id)),
   );
-  const [aiInsight, setAiInsight] = useState<{
-    loading: boolean;
-    text: string | null;
-    error: string | null;
-    destId: string | null;
-  }>({ loading: false, text: null, error: null, destId: null });
 
   const activeId = hoveredId ?? selectedId;
 
@@ -75,12 +148,156 @@ const DestinationsSection = () => {
     [viewportIds],
   );
 
-  const visibleDestinations = selectedDestination ? nearbyDestinations : viewportDestinations;
+  const selectedDestinationWithDistance = useMemo<DestinationWithDistance | null>(() => {
+    if (!selectedDestination) return null;
+    return { ...selectedDestination, distance: 0 };
+  }, [selectedDestination]);
+
+  const visibleDestinations = useMemo(() => {
+    if (!selectedDestination) {
+      return viewportDestinations;
+    }
+
+    if (!selectedDestinationWithDistance) {
+      return nearbyDestinations;
+    }
+
+    return [selectedDestinationWithDistance, ...nearbyDestinations];
+  }, [selectedDestination, selectedDestinationWithDistance, nearbyDestinations, viewportDestinations]);
+
+  const liveNearbyDestinations = useMemo<DestinationWithDistance[]>(() => {
+    if (!liveLocation.coords) {
+      return [];
+    }
+
+    const ranked = destinations
+      .map((destination) => ({
+        ...destination,
+        distance: distanceKm(liveLocation.coords as [number, number], destination.coords),
+      }))
+      .sort((first, second) => first.distance - second.distance);
+
+    const nearby = ranked.filter((destination) => destination.distance <= LIVE_NEARBY_RADIUS_KM);
+    return (nearby.length > 0 ? nearby : ranked).slice(0, LIVE_NEARBY_LIMIT);
+  }, [liveLocation.coords]);
+
+  const livePopularPlaces = useMemo(() => {
+    return liveNearbyDestinations
+      .flatMap((destination) => {
+        const localExplore = getLocalExploreForDestination(destination.id);
+
+        return localExplore.places.map((place, index) => ({
+          id: `${destination.id}-${place.name}`,
+          destinationId: destination.id,
+          area: destination.area,
+          approxDistanceKm: destination.distance,
+          popularityOrder: index,
+          place,
+        }));
+      })
+      .sort(
+        (first, second) =>
+          first.approxDistanceKm - second.approxDistanceKm || first.popularityOrder - second.popularityOrder,
+      )
+      .slice(0, 7);
+  }, [liveNearbyDestinations]);
+
+  const livePopularPlacesByDestination = useMemo(() => {
+    const grouped: Record<string, typeof livePopularPlaces> = {};
+
+    livePopularPlaces.forEach((item) => {
+      if (!grouped[item.destinationId]) {
+        grouped[item.destinationId] = [];
+      }
+      grouped[item.destinationId].push(item);
+    });
+
+    return grouped;
+  }, [livePopularPlaces]);
+
+  const fromSuggestions = useMemo(
+    () => getDestinationMatches(fromQuery, selectedId),
+    [fromQuery, selectedId],
+  );
+
+  const toSuggestions = useMemo(
+    () => getDestinationMatches(toQuery, fromId),
+    [toQuery, fromId],
+  );
 
   const hasDistance = (
     destination: (typeof visibleDestinations)[number],
   ): destination is (typeof nearbyDestinations)[number] =>
     "distance" in destination && typeof destination.distance === "number";
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!plannerRef.current?.contains(event.target as Node)) {
+        setActivePlannerField(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLiveLocation({
+        status: "unsupported",
+        coords: null,
+        accuracyM: null,
+        error: "Geolocation is not supported on this browser.",
+      });
+      return;
+    }
+
+    setLiveLocation((currentState) =>
+      currentState.status === "ready"
+        ? currentState
+        : {
+            status: "locating",
+            coords: null,
+            accuracyM: null,
+            error: null,
+          },
+    );
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setLiveLocation({
+          status: "ready",
+          coords: [position.coords.latitude, position.coords.longitude],
+          accuracyM: position.coords.accuracy,
+          error: null,
+        });
+      },
+      (error) => {
+        setLiveLocation((currentState) =>
+          currentState.status === "ready"
+            ? currentState
+            : {
+                status: "error",
+                coords: null,
+                accuracyM: null,
+                error: getGeolocationErrorMessage(error),
+              },
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 45000,
+      },
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
 
   useEffect(() => {
     const nextSelectedId = getValidDestinationId(selectedQueryId);
@@ -93,12 +310,15 @@ const DestinationsSection = () => {
       const destination = destinations.find((item) => item.id === nextSelectedId);
 
       if (destination) {
+        setToQuery(destination.name);
         mapRef.current?.flyTo(destination.coords, 8, { duration: 0.6 });
       }
 
       if (window.location.hash === "#destinations") {
         document.getElementById("destinations")?.scrollIntoView({ block: "start" });
       }
+    } else {
+      setToQuery("");
     }
   }, [selectedQueryId]);
 
@@ -120,74 +340,28 @@ const DestinationsSection = () => {
   };
 
   const handleSelectDestination = (destinationId: string) => {
+    const destination = destinations.find((item) => item.id === destinationId);
+
     setSelectedId(destinationId);
     setHoveredId(null);
+    if (destination) {
+      setToQuery(destination.name);
+    }
     syncSelectedQuery(destinationId);
   };
 
-  useEffect(() => {
-    if (!selectedId) {
-      setAiInsight({ loading: false, text: null, error: null, destId: null });
-      return;
-    }
+  const handleSelectFromDestination = (destinationId: string) => {
+    const destination = destinations.find((item) => item.id === destinationId);
 
-    const dest = destinations.find((d) => d.id === selectedId);
-    if (!dest) return;
+    setFromId(destinationId);
+    setFromQuery(destination?.name ?? "");
+    setActivePlannerField(null);
+  };
 
-    const nearby = destinations
-      .filter((d) => d.id !== dest.id)
-      .map((d) => ({ ...d, distance: distanceKm(dest.coords, d.coords) }))
-      .filter((d) => d.distance <= 220)
-      .sort((a, b) => a.distance - b.distance);
-
-    const nearbyList =
-      nearby.length > 0
-        ? nearby.map((d) => `${d.name} (crowd: ${d.crowd})`).join(", ")
-        : "none within 220 km";
-
-    const prompt =
-      `You are a Nepal travel expert. A traveler is viewing ${dest.name} (${dest.category}, ${dest.area}). ` +
-      `Current crowd level: ${dest.crowd}. ` +
-      `Nearby destinations within 220 km: ${nearbyList}.\n\n` +
-      `In 2–3 concise sentences: (1) explain why ${dest.name} currently has a "${dest.crowd}" crowd level, ` +
-      `(2) what this means practically for a traveler visiting, and ` +
-      `(3) give one specific actionable recommendation. Be direct and practical.`;
-
-    const controller = new AbortController();
-    setAiInsight({ loading: true, text: null, error: null, destId: selectedId });
-
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": (import.meta.env.VITE_ANTHROPIC_API_KEY as string) ?? "",
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        const text: string = data?.content?.[0]?.text ?? "No insight available.";
-        setAiInsight({ loading: false, text, error: null, destId: selectedId });
-      })
-      .catch((err: Error) => {
-        if (err.name === "AbortError") return;
-        setAiInsight({
-          loading: false,
-          text: null,
-          error: "Could not load AI insight. Check your VITE_ANTHROPIC_API_KEY.",
-          destId: selectedId,
-        });
-      });
-
-    return () => controller.abort();
-  }, [selectedId]);
+  const handleSelectToDestination = (destinationId: string) => {
+    handleSelectDestination(destinationId);
+    setActivePlannerField(null);
+  };
 
   useEffect(() => {
     if (!mapNodeRef.current || mapRef.current) return;
@@ -222,33 +396,8 @@ const DestinationsSection = () => {
       noWrap: true,
     }).addTo(map);
 
-    L.geoJSON(nepalBorderGeoJson, {
-      interactive: false,
-      style: {
-        color: "rgba(16, 185, 129, 0.30)",
-        weight: 9,
-        opacity: 0.95,
-        fillColor: "#10b981",
-        fillOpacity: 0.025,
-        lineCap: "round",
-        lineJoin: "round",
-      },
-    }).addTo(map);
-
-    L.geoJSON(nepalBorderGeoJson, {
-      interactive: false,
-      style: {
-        color: "#10b981",
-        weight: 3.2,
-        opacity: 1,
-        fillOpacity: 0,
-        lineCap: "round",
-        lineJoin: "round",
-      },
-    }).addTo(map);
-
     markersLayerRef.current = L.layerGroup().addTo(map);
-    linesLayerRef.current = L.layerGroup().addTo(map);
+    userLocationLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
     const initialSelectedId = getValidDestinationId(new URLSearchParams(window.location.search).get("selected"));
@@ -286,22 +435,20 @@ const DestinationsSection = () => {
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
-      linesLayerRef.current = null;
+      userLocationLayerRef.current = null;
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     const markersLayer = markersLayerRef.current;
-    const linesLayer = linesLayerRef.current;
 
-    if (!map || !markersLayer || !linesLayer) return;
+    if (!map || !markersLayer) return;
 
     markersLayer.clearLayers();
-    linesLayer.clearLayers();
 
     destinations.forEach((destination) => {
-      const isActive = destination.id === activeId;
+      const isActive = destination.id === activeId || destination.id === fromId;
 
       const marker = L.marker(destination.coords, {
         icon: markerIcon(isActive),
@@ -337,21 +484,55 @@ const DestinationsSection = () => {
       marker.addTo(markersLayer);
     });
 
-    if (selectedDestination) {
-      nearbyDestinations.forEach((destination) => {
-        L.polyline([selectedDestination.coords, destination.coords], {
-          color: "hsl(var(--highlight))",
-          weight: 2,
-          dashArray: "6 6",
-          opacity: 0.95,
-        }).addTo(linesLayer);
-      });
+  }, [activeId, fromId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const userLocationLayer = userLocationLayerRef.current;
+
+    if (!map || !userLocationLayer) return;
+
+    userLocationLayer.clearLayers();
+
+    if (liveLocation.status !== "ready" || !liveLocation.coords) return;
+
+    const accuracyRadiusM = Math.min(Math.max(liveLocation.accuracyM ?? 120, 50), 3000);
+
+    L.circle(liveLocation.coords, {
+      radius: accuracyRadiusM,
+      color: "#0284c7",
+      weight: 1.5,
+      fillColor: "#38bdf8",
+      fillOpacity: 0.12,
+      opacity: 0.8,
+      interactive: false,
+    }).addTo(userLocationLayer);
+
+    const userMarker = L.circleMarker(liveLocation.coords, {
+      radius: 7,
+      color: "#075985",
+      fillColor: "#0ea5e9",
+      fillOpacity: 1,
+      weight: 2,
+    }).addTo(userLocationLayer);
+
+    userMarker.bindTooltip(`You are here (${Math.round(accuracyRadiusM)}m accuracy)`, {
+      direction: "top",
+      offset: [0, -12],
+      opacity: 1,
+      className: "smart-trails-tooltip",
+    });
+
+    if (!hasCenteredOnLiveRef.current && isWithinNepalBounds(liveLocation.coords) && !selectedId) {
+      map.flyTo(liveLocation.coords, 8, { duration: 0.6 });
+      hasCenteredOnLiveRef.current = true;
     }
-  }, [selectedDestination, activeId, nearbyDestinations]);
+  }, [liveLocation, selectedId]);
 
   const handleBackToAll = () => {
     setSelectedId(null);
     setHoveredId(null);
+    setToQuery("");
     syncSelectedQuery(null);
     mapRef.current?.flyToBounds(NEPAL_MAP_BOUNDS, { duration: 0.6, padding: MAP_FIT_PADDING });
   };
@@ -361,48 +542,138 @@ const DestinationsSection = () => {
       <div className="h-full w-full py-2 md:py-3 pl-2 md:pl-3 pr-0">
         <div className="rounded-2xl overflow-hidden border border-border bg-card h-full">
           <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-            <div className="h-full p-4 md:p-5 flex flex-col border-b border-border lg:border-b-0 lg:border-r">
-              <div className="flex-1 overflow-hidden min-h-0">
-            {selectedId && (
-              <button
-                type="button"
-                onClick={handleBackToAll}
-                className="w-full mb-4 text-sm font-medium px-4 py-2 rounded-full border border-border hover:bg-accent transition-colors"
-              >
-                Back to all
-              </button>
-            )}
+            <div className="h-full p-3 md:p-4 flex flex-col border-b border-border lg:border-b-0 lg:border-r">
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
+                <div ref={plannerRef} className="space-y-2">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                  <div className="relative">
+                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      From
+                    </label>
+                    <Input
+                      value={fromQuery}
+                      onFocus={() => setActivePlannerField("from")}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setFromQuery(nextValue);
+                        setFromId(null);
+                        setActivePlannerField("from");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && fromSuggestions[0]) {
+                          event.preventDefault();
+                          handleSelectFromDestination(fromSuggestions[0].id);
+                        }
+                      }}
+                      placeholder="Start location"
+                      className="h-9 rounded-xl border-border/80 bg-background/75 px-3 text-sm shadow-none focus-visible:ring-1"
+                    />
+                    {activePlannerField === "from" && fromSuggestions.length > 0 && (
+                      <div className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-[700] rounded-xl border border-border bg-card p-1 shadow-xl">
+                        {fromSuggestions.map((destination) => (
+                          <button
+                            key={destination.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectFromDestination(destination.id);
+                            }}
+                            className="w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent/55"
+                          >
+                            <p className="text-sm font-medium leading-tight">{destination.name}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{destination.area}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-            <div className="mb-3">
-              <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Explore</p>
-              <h3 className="text-xl font-display font-semibold mt-1">
-                {selectedDestination
-                  ? `${nearbyDestinations.length} places near ${selectedDestination.name}`
-                  : `${viewportDestinations.length} destination${viewportDestinations.length !== 1 ? "s" : ""} in view`}
-              </h3>
-              <p className="text-xs text-muted-foreground/75 mt-1.5 leading-relaxed">
-                {selectedDestination
-                  ? `Showing destinations within roughly 220 km of ${selectedDestination.name}.`
-                  : "Drag the map to explore Nepal, then click a pin to reveal nearby places."}
-              </p>
-            </div>
+                  <div className="relative">
+                    <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      Where To
+                    </label>
+                    <Input
+                      value={toQuery}
+                      onFocus={() => setActivePlannerField("to")}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setToQuery(nextValue);
+                        setSelectedId(null);
+                        syncSelectedQuery(null);
+                        setActivePlannerField("to");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && toSuggestions[0]) {
+                          event.preventDefault();
+                          handleSelectToDestination(toSuggestions[0].id);
+                        }
+                      }}
+                      placeholder="Destination"
+                      className="h-9 rounded-xl border-border/80 bg-background/75 px-3 text-sm shadow-none focus-visible:ring-1"
+                    />
+                    {activePlannerField === "to" && toSuggestions.length > 0 && (
+                      <div className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-[700] rounded-xl border border-border bg-card p-1 shadow-xl">
+                        {toSuggestions.map((destination) => (
+                          <button
+                            key={destination.id}
+                            type="button"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectToDestination(destination.id);
+                            }}
+                            className="w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent/55"
+                          >
+                            <p className="text-sm font-medium leading-tight">{destination.name}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{destination.area}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-            <div className="space-y-2">
+              </div>
+
+                <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Explore</p>
+                      <h3 className="text-base font-display font-semibold mt-0.5">
+                        {selectedDestination
+                          ? `${visibleDestinations.length} places near ${selectedDestination.name}`
+                          : `${viewportDestinations.length} destination${viewportDestinations.length !== 1 ? "s" : ""} in view`}
+                      </h3>
+                    </div>
+                    {selectedId && (
+                      <button
+                        type="button"
+                        onClick={handleBackToAll}
+                        className="text-[11px] font-medium px-2.5 py-1 rounded-md border border-border hover:bg-accent transition-colors"
+                      >
+                        All Places
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/75 mt-1 leading-relaxed">
+                    {selectedDestination
+                      ? `Showing destinations within roughly 220 km of ${selectedDestination.name}.`
+                      : "Drag map and tap pins to reveal nearby places."}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
               {visibleDestinations.map((destination) => {
                 const distanceLabel = hasDistance(destination) ? `${destination.distance.toFixed(0)} km away` : null;
                 const isSelected = destination.id === selectedId;
                 const isHovered = destination.id === hoveredId;
+                const popularPlacesForDestination = livePopularPlacesByDestination[destination.id] ?? [];
 
                 return (
-                  <button
+                  <div
                     key={destination.id}
-                    type="button"
                     onMouseEnter={() => setHoveredId(destination.id)}
                     onMouseLeave={() => setHoveredId(null)}
-                    onClick={() => {
-                      handleSelectDestination(destination.id);
-                    }}
-                    className={`w-full text-left p-2.5 rounded-xl border bg-background transition-all duration-200 ${
+                    className={`rounded-lg border bg-background transition-all duration-200 ${
                       isSelected
                         ? "border-emerald-400/60 bg-accent/45 shadow-sm"
                         : isHovered
@@ -410,21 +681,50 @@ const DestinationsSection = () => {
                           : "border-border hover:border-border/80 hover:bg-accent/30"
                     }`}
                   >
-                    <div className="flex gap-3">
-                      <img
-                        src={destination.img}
-                        alt={destination.name}
-                        className="h-14 w-14 rounded-lg object-cover shrink-0 transition-transform duration-200"
-                        loading="lazy"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold leading-tight">{destination.name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{destination.category}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{destination.area}</p>
-                        {distanceLabel && <p className="text-xs font-medium text-foreground/80 mt-1">{distanceLabel}</p>}
+                    <button
+                      type="button"
+                      onClick={() => handleSelectDestination(destination.id)}
+                      className="w-full text-left p-2"
+                    >
+                      <div className="flex gap-3 items-start">
+                        <img
+                          src={destination.img}
+                          alt={destination.name}
+                          className="h-12 w-12 rounded-md object-cover shrink-0 transition-transform duration-200"
+                          loading="lazy"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold leading-tight">{destination.name}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{destination.category}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{destination.area}</p>
+                          {distanceLabel && (
+                            <p className="text-xs font-medium text-foreground/80 mt-1">{distanceLabel}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+
+                    {liveLocation.status === "ready" && popularPlacesForDestination.length > 0 && (
+                      <div className="border-t border-border/70 px-2 pb-2 pt-1.5">
+                        <div className="space-y-1">
+                          {popularPlacesForDestination.map((item) => (
+                            <div key={item.id} className="rounded-md border border-sky-200/70 bg-sky-50/55 px-2 py-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[11px] font-semibold text-foreground">{item.place.name}</p>
+                                <span className="rounded-sm border border-sky-200 bg-sky-100/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-900/75">
+                                  Popular
+                                </span>
+                              </div>
+                              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                Best visit time: {item.place.duration}
+                              </p>
+                              <p className="mt-0.5 text-[10px] italic text-sky-900/75">{item.place.note}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
 
@@ -439,44 +739,7 @@ const DestinationsSection = () => {
                   No destinations in the current map view. Pan or zoom out to see more.
                 </p>
               )}
-            </div>
-              </div>
-
-              <div className="border-t border-border pt-3 mt-2 shrink-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <span
-                    className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"
-                    style={{ boxShadow: "0 0 0 3px rgba(16,185,129,0.18)" }}
-                  />
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    AI Insight
-                  </span>
                 </div>
-                {!selectedId ? (
-                  <p className="text-xs text-muted-foreground/70 leading-relaxed">
-                    Select a destination pin to get an AI-powered travel insight.
-                  </p>
-                ) : aiInsight.loading ? (
-                  <div className="space-y-1.5 py-0.5">
-                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-full" />
-                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-5/6" />
-                    <div className="h-2.5 bg-muted animate-pulse rounded-full w-4/6" />
-                  </div>
-                ) : aiInsight.error ? (
-                  <p className="text-xs text-destructive/80 leading-relaxed">{aiInsight.error}</p>
-                ) : (
-                  <p className="text-xs text-foreground/75 leading-relaxed">{aiInsight.text}</p>
-                )}
-
-                {selectedDestination && (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/destinations/${selectedDestination.id}`)}
-                    className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-                  >
-                    View Details
-                  </button>
-                )}
               </div>
             </div>
 
@@ -484,6 +747,11 @@ const DestinationsSection = () => {
               <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-full border border-white/55 bg-white/94 px-3 py-1.5 text-[11px] font-medium tracking-[0.12em] text-foreground/75 shadow-sm backdrop-blur-sm uppercase">
                 Drag Map • Click Pins
               </div>
+              {liveLocation.status === "ready" && (
+                <div className="pointer-events-none absolute left-4 top-14 z-[500] rounded-md border border-sky-200/80 bg-white/95 px-3 py-1.5 text-[11px] font-medium text-sky-900/80 shadow-sm backdrop-blur-sm">
+                  Live location area active
+                </div>
+              )}
               <div ref={mapNodeRef} className="explore-map-shell absolute inset-0" />
             </div>
           </div>
