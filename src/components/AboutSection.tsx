@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 import aboutImg from "@/assets/about-nepal.jpg";
 
 const stats = [
@@ -77,18 +76,18 @@ const AboutSection = () => {
               itineraries — all in one place.
             </p>
             <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-              <Link
-                to="/dashboard"
+              <a
+                href="#destinations"
                 className="bg-primary text-primary-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:opacity-90 transition-opacity"
               >
-                Open Live Map
-              </Link>
-              <Link
-                to="/budget"
+                Explore Destinations
+              </a>
+              <a
+                href="#services"
                 className="text-sm font-medium text-foreground hover:text-muted-foreground transition-colors underline underline-offset-4"
               >
-                Budget Estimator
-              </Link>
+                View Features
+              </a>
             </div>
           </motion.div>
         </div>

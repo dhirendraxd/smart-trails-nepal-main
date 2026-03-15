@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 
 const PressSection = () => {
   return (
@@ -22,18 +21,18 @@ const PressSection = () => {
             accurate, up-to-date information for every region. No guesswork, no outdated guidebooks.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              to="/dashboard"
+            <a
+              href="#destinations"
               className="bg-primary text-primary-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:opacity-90 transition-opacity"
             >
-              Try the Live Map
-            </Link>
-            <Link
-              to="/trip"
+              Explore Destinations
+            </a>
+            <a
+              href="#services"
               className="border border-border font-medium text-sm px-8 py-3.5 rounded-full hover:bg-accent transition-colors"
             >
-              Plan a Trip
-            </Link>
+              View Features
+            </a>
           </div>
         </motion.div>
 

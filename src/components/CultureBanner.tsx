@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { Link } from "react-router-dom";
 import cultureImg from "@/assets/culture-nepal.jpg";
 
 const CultureBanner = () => {
@@ -41,12 +40,12 @@ const CultureBanner = () => {
                 Every region comes with detailed travel data — required permits, essential gear lists,
                 day-by-day itinerary suggestions, difficulty ratings, and insider tips from experienced trekkers.
               </p>
-              <Link
-                to="/dashboard?region=everest"
+              <a
+                href="#destinations"
                 className="inline-block bg-white text-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:bg-white/90 transition-all"
               >
-                See Everest Region Details
-              </Link>
+                Explore Destinations
+              </a>
             </motion.div>
           </div>
         </div>

@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 import heroImg from "@/assets/hero-nepal.jpg";
 import destKathmandu from "@/assets/dest-kathmandu.jpg";
 import destPokhara from "@/assets/dest-pokhara.jpg";
@@ -15,7 +14,7 @@ const galleryImages = [
 
 const FinalCTA = () => {
   return (
-    <section className="bg-background">
+    <section id="gallery" className="bg-background">
       <div className="container py-24 md:py-32">
         <div className="grid md:grid-cols-2 gap-3 md:gap-4 lg:gap-6">
           <motion.div
@@ -49,18 +48,18 @@ const FinalCTA = () => {
                 Open the dashboard to see real-time crowd levels, weather forecasts, and get a downloadable packing checklist for your destination.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link
-                  to="/dashboard"
+                <a
+                  href="#destinations"
                   className="inline-block bg-white text-foreground font-medium text-sm px-8 py-3.5 rounded-full hover:bg-white/90 transition-all"
                 >
-                  Open Dashboard
-                </Link>
-                <Link
-                  to="/budget"
+                  Explore Destinations
+                </a>
+                <a
+                  href="#services"
                   className="inline-block border border-white/20 text-white/70 font-medium text-sm px-8 py-3.5 rounded-full hover:bg-white/10 transition-all"
                 >
-                  Budget Estimator
-                </Link>
+                  View Features
+                </a>
               </div>
             </div>
           </motion.div>
