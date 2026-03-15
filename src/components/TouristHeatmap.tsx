@@ -2,15 +2,20 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { nepalRegions, getDensityLevel, getDensityColor, type Region } from "@/data/regions";
-import { Map, Satellite, CloudSun, Search, X } from "lucide-react";
+import { Map, Satellite, CloudSun, Search, X, LocateFixed, Layers } from "lucide-react";
 import { useWeatherData } from "@/hooks/useWeatherData";
 
 interface Props {
-  onSelectRegion: (region: Region) => void;
+  onSelectRegion?: (region: Region) => void;
   selectedRegionId?: string;
+  minimal?: boolean;
 }
 
-const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
+const TouristHeatmap = ({ onSelectRegion, selectedRegionId, minimal = false }: Props) => {
+  const nepalBounds = L.latLngBounds(
+    L.latLng(26.28, 80.0),
+    L.latLng(30.48, 88.35)
+  );
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.CircleMarker[]>([]);
@@ -29,7 +34,7 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
     : [];
 
   const handleSearchSelect = useCallback((region: Region) => {
-    onSelectRegion(region);
+    onSelectRegion?.(region);
     setSearchQuery("");
     setSearchOpen(false);
   }, [onSelectRegion]);
@@ -39,7 +44,20 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
 
     const map = L.map(mapRef.current, {
       zoomControl: false,
-    }).setView([28.3, 84.5], 7);
+      minZoom: minimal ? 7 : 6,
+      maxZoom: 11,
+      maxBounds: minimal ? nepalBounds : undefined,
+      maxBoundsViscosity: minimal ? 1.0 : 0.8,
+      zoomSnap: 0.5,
+    });
+
+    if (minimal) {
+      map.fitBounds(nepalBounds, {
+        padding: [16, 16],
+      });
+    } else {
+      map.setView([28.3, 84.5], 7);
+    }
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
@@ -48,8 +66,8 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
       maxZoom: 18,
     });
 
-    const standardLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; OpenStreetMap contributors',
+    const standardLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      attribution: '&copy; Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCAN, Esri Japan, METI, Esri China (Hong Kong), NOSTRA',
       maxZoom: 18,
     });
 
@@ -57,9 +75,14 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
       maxZoom: 18,
     });
 
-    satelliteLayer.addTo(map);
-    labelsLayer.addTo(map);
-    tileLayerRef.current = satelliteLayer;
+    if (minimal) {
+      standardLayer.addTo(map);
+      tileLayerRef.current = standardLayer;
+    } else {
+      satelliteLayer.addTo(map);
+      labelsLayer.addTo(map);
+      tileLayerRef.current = satelliteLayer;
+    }
     labelsLayerRef.current = labelsLayer;
 
     (map as any)._satelliteLayer = satelliteLayer;
@@ -93,7 +116,7 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
         className: "font-body text-xs",
       });
 
-      marker.on("click", () => onSelectRegion(region));
+      marker.on("click", () => onSelectRegion?.(region));
       markersRef.current.push(marker);
     });
 
@@ -117,9 +140,13 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
         map.flyTo([region.lat, region.lng], 10, { duration: 1.2, easeLinearity: 0.25 });
       }
     } else {
-      map.flyTo([28.3, 84.5], 7, { duration: 1.2, easeLinearity: 0.25 });
+      if (minimal) {
+        map.flyToBounds(nepalBounds, { duration: 1.2, easeLinearity: 0.25, padding: [16, 16] });
+      } else {
+        map.flyTo([28.3, 84.5], 7, { duration: 1.2, easeLinearity: 0.25 });
+      }
     }
-  }, [selectedRegionId]);
+  }, [minimal, nepalBounds, selectedRegionId]);
 
   // Weather overlay effect
   useEffect(() => {
@@ -201,102 +228,151 @@ const TouristHeatmap = ({ onSelectRegion, selectedRegionId }: Props) => {
     <div className="relative w-full h-full min-h-[400px] overflow-hidden">
       <div ref={mapRef} className="w-full h-full min-h-[400px]" />
 
-      {/* Controls */}
-      <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2">
-        <button
-          onClick={toggleMapStyle}
-          className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 hover:bg-accent transition-colors"
-          title={isSatellite ? "Switch to standard map" : "Switch to satellite view"}
-        >
-          {isSatellite ? <Map className="w-4 h-4 text-foreground" /> : <Satellite className="w-4 h-4 text-foreground" />}
-        </button>
-        <button
-          onClick={() => setShowWeather(!showWeather)}
-          className={`backdrop-blur-sm border border-border rounded-xl p-2.5 transition-colors ${
-            showWeather ? "bg-primary/20 border-primary/40" : "bg-card/90 hover:bg-accent"
-          }`}
-          title={showWeather ? "Hide weather overlay" : "Show weather overlay"}
-          disabled={weatherLoading}
-        >
-          <CloudSun className={`w-4 h-4 ${showWeather ? "text-primary" : "text-foreground"}`} />
-        </button>
-        <button
-          onClick={() => { setSearchOpen(!searchOpen); setTimeout(() => searchInputRef.current?.focus(), 100); }}
-          className={`backdrop-blur-sm border border-border rounded-xl p-2.5 transition-colors ${
-            searchOpen ? "bg-primary/20 border-primary/40" : "bg-card/90 hover:bg-accent"
-          }`}
-          title="Search regions"
-        >
-          <Search className={`w-4 h-4 ${searchOpen ? "text-primary" : "text-foreground"}`} />
-        </button>
-      </div>
-
-      {/* Search bar */}
-      {searchOpen && (
-        <div className="absolute top-4 left-16 z-[1000] w-64 sm:w-72">
-          <div className="bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2">
-              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search regions…"
-                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-secondary rounded">
-                  <X className="w-3.5 h-3.5 text-muted-foreground" />
-                </button>
-              )}
-            </div>
-            {filteredRegions.length > 0 && (
-              <div className="border-t border-border max-h-48 overflow-y-auto">
-                {filteredRegions.map((region) => {
-                  const level = getDensityLevel(region);
-                  const color = getDensityColor(level);
-                  return (
-                    <button
-                      key={region.id}
-                      onClick={() => handleSearchSelect(region)}
-                      className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors flex items-center justify-between"
-                    >
-                      <span className="text-sm font-medium">{region.name}</span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ backgroundColor: color + "20", color }}>
-                        {level}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {searchQuery && filteredRegions.length === 0 && (
-              <div className="border-t border-border px-3 py-2">
-                <p className="text-xs text-muted-foreground">No regions found</p>
-              </div>
-            )}
+      {!minimal && (
+        <>
+          {/* Controls */}
+          <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2">
+            <button
+              onClick={toggleMapStyle}
+              className="bg-card/90 backdrop-blur-sm border border-border rounded-xl p-2.5 hover:bg-accent transition-colors"
+              title={isSatellite ? "Switch to standard map" : "Switch to satellite view"}
+            >
+              {isSatellite ? <Map className="w-4 h-4 text-foreground" /> : <Satellite className="w-4 h-4 text-foreground" />}
+            </button>
+            <button
+              onClick={() => setShowWeather(!showWeather)}
+              className={`backdrop-blur-sm border border-border rounded-xl p-2.5 transition-colors ${
+                showWeather ? "bg-primary/20 border-primary/40" : "bg-card/90 hover:bg-accent"
+              }`}
+              title={showWeather ? "Hide weather overlay" : "Show weather overlay"}
+              disabled={weatherLoading}
+            >
+              <CloudSun className={`w-4 h-4 ${showWeather ? "text-primary" : "text-foreground"}`} />
+            </button>
+            <button
+              onClick={() => { setSearchOpen(!searchOpen); setTimeout(() => searchInputRef.current?.focus(), 100); }}
+              className={`backdrop-blur-sm border border-border rounded-xl p-2.5 transition-colors ${
+                searchOpen ? "bg-primary/20 border-primary/40" : "bg-card/90 hover:bg-accent"
+              }`}
+              title="Search regions"
+            >
+              <Search className={`w-4 h-4 ${searchOpen ? "text-primary" : "text-foreground"}`} />
+            </button>
           </div>
+
+          {/* Search bar */}
+          {searchOpen && (
+            <div className="absolute top-4 left-16 z-[1000] w-64 sm:w-72">
+              <div className="bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search regions…"
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-secondary rounded">
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+                {filteredRegions.length > 0 && (
+                  <div className="border-t border-border max-h-48 overflow-y-auto">
+                    {filteredRegions.map((region) => {
+                      const level = getDensityLevel(region);
+                      const color = getDensityColor(level);
+                      return (
+                        <button
+                          key={region.id}
+                          onClick={() => handleSearchSelect(region)}
+                          className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors flex items-center justify-between"
+                        >
+                          <span className="text-sm font-medium">{region.name}</span>
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ backgroundColor: color + "20", color }}>
+                            {level}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {searchQuery && filteredRegions.length === 0 && (
+                  <div className="border-t border-border px-3 py-2">
+                    <p className="text-xs text-muted-foreground">No regions found</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Legend */}
+          <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-xl p-3 z-[1000]">
+            <p className="text-xs font-semibold mb-2">Tourist Density</p>
+            <div className="flex flex-col gap-1.5">
+              {([
+                ["#22c55e", "Low"],
+                ["#eab308", "Moderate"],
+                ["#f97316", "High"],
+                ["#ef4444", "Overcrowded"],
+              ] as const).map(([color, label]) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                  <span className="text-xs text-muted-foreground">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {minimal && mapInstance.current && (
+        <div className="absolute right-4 top-4 z-[1000] flex flex-col gap-2">
+          <button
+            onClick={toggleMapStyle}
+            className="h-10 w-10 rounded-full border border-border bg-card/95 backdrop-blur-sm shadow-sm transition-colors hover:bg-accent flex items-center justify-center"
+            title={isSatellite ? "Switch to standard map" : "Switch to satellite view"}
+          >
+            <Layers className="h-4 w-4" />
+          </button>
+          <button
+            className="h-10 w-10 rounded-full border border-border bg-card/95 backdrop-blur-sm shadow-sm text-sm font-semibold transition-colors hover:bg-accent"
+            title="3D view (coming soon)"
+          >
+            3D
+          </button>
+          <button
+            onClick={() => mapInstance.current?.zoomIn()}
+            className="h-10 w-10 rounded-full border border-border bg-card/95 backdrop-blur-sm text-lg font-semibold shadow-sm transition-colors hover:bg-accent"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            onClick={() => mapInstance.current?.zoomOut()}
+            className="h-10 w-10 rounded-full border border-border bg-card/95 backdrop-blur-sm text-lg font-semibold shadow-sm transition-colors hover:bg-accent"
+            title="Zoom out"
+          >
+            −
+          </button>
+          <button
+            onClick={() => mapInstance.current?.flyToBounds(nepalBounds, { padding: [16, 16], duration: 1 })}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card/95 backdrop-blur-sm shadow-sm transition-colors hover:bg-accent"
+            title="Reset Nepal view"
+          >
+            <LocateFixed className="h-4 w-4" />
+          </button>
         </div>
       )}
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-border rounded-xl p-3 z-[1000]">
-        <p className="text-xs font-semibold mb-2">Tourist Density</p>
-        <div className="flex flex-col gap-1.5">
-          {([
-            ["#22c55e", "Low"],
-            ["#eab308", "Moderate"],
-            ["#f97316", "High"],
-            ["#ef4444", "Overcrowded"],
-          ] as const).map(([color, label]) => (
-            <div key={label} className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-              <span className="text-xs text-muted-foreground">{label}</span>
-            </div>
-          ))}
+      {minimal && (
+        <div className="absolute left-4 bottom-4 z-[1000] rounded-xl border border-border bg-card/90 px-3 py-2 text-xs text-muted-foreground backdrop-blur-sm shadow-sm">
+          Drag to explore Nepal
         </div>
-      </div>
+      )}
     </div>
   );
 };

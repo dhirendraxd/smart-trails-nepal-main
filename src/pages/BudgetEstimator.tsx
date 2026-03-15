@@ -1,11 +1,15 @@
 import { useState, useMemo, useCallback } from "react";
-import { Calculator, DollarSign, Bed, Bus, Calendar, MapPin, Info, ArrowRightLeft, Loader2 } from "lucide-react";
+import { Calculator, Calendar, MapPin, ArrowRightLeft, Loader2, Search } from "lucide-react";
 import PageLayout from "@/components/PageLayout";
 import PageHeader from "@/components/PageHeader";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { nepalRegions } from "@/data/regions";
-import { motion, AnimatePresence } from "framer-motion";
+import { getHotelSuggestions } from "@/data/hotelSuggestions";
+import { getTransportSuggestions } from "@/data/transportSuggestions";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Star } from "lucide-react";
 
 const FALLBACK_RATE = 133.5;
 
@@ -21,19 +25,14 @@ const ACCOMMODATION_TYPES = [
 const TRANSPORT_TYPES = [
   { id: "local-bus", label: "Local Bus", dailyRate: 5 },
   { id: "tourist-bus", label: "Tourist Bus", dailyRate: 15 },
+  { id: "luxury-bus", label: "Luxury Bus", dailyRate: 28 },
   { id: "private-car", label: "Private Car", dailyRate: 45 },
   { id: "domestic-flight", label: "Domestic Flight", dailyRate: 80 },
 ] as const;
 
-const PIE_COLORS = [
-  "hsl(220, 10%, 20%)",
-  "hsl(30, 60%, 55%)",
-  "hsl(160, 50%, 42%)",
-  "hsl(340, 55%, 50%)",
-];
-
 const BudgetEstimator = () => {
   const [destinationId, setDestinationId] = useState(nepalRegions[0].id);
+  const [destinationQuery, setDestinationQuery] = useState("");
   const [days, setDays] = useState(5);
   const [accommodationId, setAccommodationId] = useState<string>("mid");
   const [transportId, setTransportId] = useState<string>("tourist-bus");
@@ -66,12 +65,28 @@ const BudgetEstimator = () => {
     return { food, stay, travel, misc, total };
   }, [destination, accommodation, transport, days]);
 
-  const pieData = [
-    { name: "Food & Activities", value: Math.round(breakdown.food * rate) },
-    { name: "Accommodation", value: Math.round(breakdown.stay * rate) },
-    { name: "Transport", value: Math.round(breakdown.travel * rate) },
-    { name: "Miscellaneous", value: Math.round(breakdown.misc * rate) },
-  ];
+  const filteredRegions = useMemo(() => {
+    const query = destinationQuery.trim().toLowerCase();
+
+    if (!query) {
+      return [];
+    }
+
+    return nepalRegions.filter((region) => {
+      const searchableText = `${region.name} ${region.category}`.toLowerCase();
+      return searchableText.includes(query);
+    });
+  }, [destinationQuery]);
+
+  const hotelSuggestions = useMemo(
+    () => getHotelSuggestions(destinationId, accommodationId as "budget" | "mid" | "premium" | "luxury"),
+    [destinationId, accommodationId]
+  );
+
+  const transportSuggestions = useMemo(
+    () => getTransportSuggestions(destinationId, transportId as "local-bus" | "tourist-bus" | "luxury-bus" | "private-car" | "domestic-flight"),
+    [destinationId, transportId]
+  );
 
   return (
     <PageLayout>
@@ -79,214 +94,230 @@ const BudgetEstimator = () => {
         <PageHeader
           icon={Calculator}
           title="Budget Estimator"
-          description="Plan your trip expenses based on destination, stay length, and preferences"
-          actions={
-            <div className="flex items-center gap-2">
-              {rateLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-              {!rateLoading && rateSource !== "fallback" && (
-                <span className="text-[10px] text-muted-foreground hidden sm:inline">Live rate</span>
-              )}
-              <button
-                onClick={() => setCurrency((c) => (c === "USD" ? "NPR" : "USD"))}
-                className="flex items-center gap-2 text-xs font-medium border border-border hover:border-primary/30 bg-card hover:bg-accent px-3 py-2 rounded-full transition-all"
-                title="Toggle currency"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>{currency === "USD" ? "USD → NPR" : "NPR → USD"}</span>
-              </button>
-            </div>
-          }
+          description="A quick estimate with only the essentials."
         />
 
-        <div className="grid lg:grid-cols-[1fr_360px] gap-6 lg:gap-8">
-          {/* Inputs */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="space-y-5"
-          >
-            {/* Destination */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <label className="flex items-center gap-1.5 text-sm font-semibold mb-3">
-                <MapPin className="w-3.5 h-3.5 text-muted-foreground" /> Destination
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {nepalRegions.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => setDestinationId(r.id)}
-                    className={`text-left px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                      r.id === destinationId
-                        ? "border-primary bg-primary/5 font-medium"
-                        : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                    }`}
-                  >
-                    <span className="block truncate">{r.name}</span>
-                    <span className="text-xs text-muted-foreground">{fmt(r.avgCost)}/day</span>
-                  </button>
-                ))}
-              </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
+          <div className="bg-card border border-border rounded-3xl p-6 space-y-6">
+            <div className="space-y-1">
+              <h2 className="text-lg font-display font-semibold">Trip details</h2>
+              <p className="text-sm text-muted-foreground">Choose a destination, trip length, stay, and transport.</p>
             </div>
 
-            {/* Days */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <label className="flex items-center gap-1.5 text-sm font-semibold mb-3">
-                <Calendar className="w-3.5 h-3.5 text-muted-foreground" /> Duration
+            <div className="space-y-3">
+              <label className="flex items-center gap-1.5 text-sm font-medium">
+                <MapPin className="w-3.5 h-3.5 text-muted-foreground" /> Destination
               </label>
-              <div className="flex items-center gap-4">
+              <div className="relative">
+                <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Input
+                  value={destinationQuery}
+                  onChange={(e) => setDestinationQuery(e.target.value)}
+                  placeholder="Search destinations"
+                  className="pl-9 rounded-xl"
+                />
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{destination.name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{destination.category}</p>
+                </div>
+                <span className="text-sm font-semibold whitespace-nowrap">{fmt(destination.avgCost)}/day</span>
+              </div>
+
+              {destinationQuery.trim() && (
+                filteredRegions.length ? (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {filteredRegions.map((region) => (
+                      <button
+                        key={region.id}
+                        onClick={() => {
+                          setDestinationId(region.id);
+                          setDestinationQuery("");
+                        }}
+                        className="w-full rounded-xl border border-border px-3 py-3 text-left text-sm transition-colors hover:border-primary/30 hover:bg-secondary/50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{region.name}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{region.category}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">{fmt(region.avgCost)}/day</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-center text-muted-foreground">
+                    No destinations found.
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-1.5 text-sm font-medium">
+                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" /> Duration
+                  </label>
+                  <span className="text-sm font-semibold">{days} days</span>
+                </div>
                 <input
                   type="range"
                   min={1}
                   max={30}
                   value={days}
                   onChange={(e) => setDays(Number(e.target.value))}
-                  className="flex-1 accent-[hsl(var(--primary))]"
+                  className="w-full accent-[hsl(var(--primary))]"
                 />
-                <span className="font-display font-bold text-lg min-w-[4ch] text-right">
-                  {days}d
-                </span>
               </div>
-            </div>
 
-            {/* Accommodation */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <label className="flex items-center gap-1.5 text-sm font-semibold mb-3">
-                <Bed className="w-3.5 h-3.5 text-muted-foreground" /> Accommodation
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {ACCOMMODATION_TYPES.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => setAccommodationId(a.id)}
-                    className={`text-left px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                      a.id === accommodationId
-                        ? "border-primary bg-primary/5 font-medium"
-                        : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                    }`}
-                  >
-                    <span className="block">{a.label}</span>
-                    <span className="text-xs text-muted-foreground">{fmt(a.dailyRate)}/night</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Transport */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <label className="flex items-center gap-1.5 text-sm font-semibold mb-3">
-                <Bus className="w-3.5 h-3.5 text-muted-foreground" /> Transport
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {TRANSPORT_TYPES.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTransportId(t.id)}
-                    className={`text-left px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                      t.id === transportId
-                        ? "border-primary bg-primary/5 font-medium"
-                        : "border-border hover:border-primary/30 hover:bg-secondary/50"
-                    }`}
-                  >
-                    <span className="block">{t.label}</span>
-                    <span className="text-xs text-muted-foreground">{fmt(t.dailyRate)}/day</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Cost Breakdown Panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="space-y-5 md:sticky md:top-20 h-fit"
-          >
-            {/* Total */}
-            <div className="bg-primary text-primary-foreground rounded-2xl p-6 text-center">
-              <p className="text-sm opacity-80 mb-1">Estimated Total ({currency})</p>
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={`${breakdown.total}-${currency}`}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="font-display font-bold text-4xl"
+              <div className="rounded-2xl border border-border p-4 space-y-2">
+                <label className="text-sm font-medium">Currency</label>
+                <button
+                  onClick={() => setCurrency((c) => (c === "USD" ? "NPR" : "USD"))}
+                  className="w-full flex items-center justify-center gap-2 text-sm font-medium border border-border hover:border-primary/30 bg-background hover:bg-accent px-3 py-2.5 rounded-xl transition-all"
+                  title="Toggle currency"
                 >
-                  {fmt(breakdown.total)}
-                </motion.p>
-              </AnimatePresence>
-              <p className="text-sm opacity-60 mt-1">
-                ~{fmt(Math.round(breakdown.total / days))}/day · {days} days · {destination.name}
-              </p>
-            </div>
-
-            {/* Pie Chart */}
-            <div className="bg-card border border-border rounded-2xl p-5">
-              <p className="text-sm font-semibold mb-2">Cost Breakdown</p>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={85}
-                    paddingAngle={3}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {pieData.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number) => `${sym}${value.toLocaleString()}`}
-                    contentStyle={{
-                      borderRadius: "12px",
-                      border: "1px solid hsl(var(--border))",
-                      background: "hsl(var(--card))",
-                      fontSize: "13px",
-                    }}
-                  />
-                  <Legend
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: "12px" }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Line items */}
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
-              <p className="text-sm font-semibold">Itemized Costs</p>
-              {[
-                { label: "Food & Activities", value: breakdown.food, color: PIE_COLORS[0] },
-                { label: "Accommodation", value: breakdown.stay, color: PIE_COLORS[1] },
-                { label: "Transport", value: breakdown.travel, color: PIE_COLORS[2] },
-                { label: "Miscellaneous (12%)", value: breakdown.misc, color: PIE_COLORS[3] },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-sm text-muted-foreground">{item.label}</span>
-                  </div>
-                  <span className="font-display font-bold text-sm">{fmt(item.value)}</span>
+                  <ArrowRightLeft className="w-4 h-4 text-muted-foreground" />
+                  <span>{currency === "USD" ? "Show in NPR" : "Show in USD"}</span>
+                </button>
+                <div className="h-4 text-[11px] text-muted-foreground">
+                  {rateLoading ? (
+                    <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Updating rate…</span>
+                  ) : currency === "NPR" ? (
+                    <span>{rateSource === "fallback" ? "Rate" : "Live rate"}: 1 USD = {nprRate.toFixed(1)} NPR</span>
+                  ) : null}
                 </div>
-              ))}
-              <div className="border-t border-border pt-3 flex items-center justify-between">
-                <span className="text-sm font-medium">Total</span>
-                <span className="font-display font-bold">{fmt(breakdown.total)}</span>
               </div>
-              {currency === "NPR" && (
-                <p className="text-[11px] text-muted-foreground text-right">
-                  {rateSource === "fallback" ? "Rate: ~" : "Live rate: "}1 USD = {nprRate.toFixed(1)} NPR
-                </p>
-              )}
+
+              <div className="rounded-2xl border border-border p-4 space-y-2">
+                <label className="text-sm font-medium">Accommodation</label>
+                <Select value={accommodationId} onValueChange={setAccommodationId}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACCOMMODATION_TYPES.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label} · {fmt(option.dailyRate)}/night
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="mt-3 rounded-2xl border border-border bg-muted/30 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Well-reviewed stays</p>
+                      <p className="text-xs text-muted-foreground">Suggestions for {destination.name}</p>
+                    </div>
+                    <Badge variant="secondary" className="rounded-full">
+                      {accommodation.label}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2">
+                    {hotelSuggestions.map((hotel) => (
+                      <div
+                        key={hotel.name}
+                        className="rounded-xl bg-background border border-border px-3 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{hotel.name}</p>
+                            <p className="text-xs text-muted-foreground">{hotel.area}</p>
+                          </div>
+                          <div className="flex items-center gap-1 text-amber-500 shrink-0">
+                            <Star className="w-3.5 h-3.5 fill-current" />
+                            <span className="text-xs font-semibold">{hotel.reviewScore}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 mt-2">
+                          <p className="text-xs text-muted-foreground">{hotel.note}</p>
+                          <span className="text-xs font-medium whitespace-nowrap">From {fmt(hotel.nightlyFrom)}/night</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border p-4 space-y-2">
+                <label className="text-sm font-medium">Transport</label>
+                <Select value={transportId} onValueChange={setTransportId}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRANSPORT_TYPES.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label} · {fmt(option.dailyRate)}/day
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="mt-3 rounded-2xl border border-border bg-muted/30 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Recommended transport</p>
+                      <p className="text-xs text-muted-foreground">Providers for {destination.name}</p>
+                    </div>
+                    <Badge variant="secondary" className="rounded-full">
+                      {transport.label}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2">
+                    {transportSuggestions.map((option) => (
+                      <div
+                        key={option.name}
+                        className="rounded-xl bg-background border border-border px-3 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{option.name}</p>
+                            <p className="text-xs text-muted-foreground">{option.type}</p>
+                          </div>
+                          <div className="flex items-center gap-1 text-amber-500 shrink-0">
+                            <Star className="w-3.5 h-3.5 fill-current" />
+                            <span className="text-xs font-semibold">{option.reviewScore}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 mt-2">
+                          <p className="text-xs text-muted-foreground">{option.note}</p>
+                          <span className="text-xs font-medium whitespace-nowrap">From {fmt(option.fareFrom)}/day</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
-          </motion.div>
+          </div>
+
+          <div className="space-y-4 lg:sticky lg:top-20 h-fit">
+            <div className="bg-primary text-primary-foreground rounded-3xl p-6">
+              <p className="text-sm opacity-80">Estimated total</p>
+              <p className="font-display font-bold text-4xl mt-2">{fmt(breakdown.total)}</p>
+              <p className="text-sm opacity-70 mt-2">{destination.name} · {days} days</p>
+              <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+                <div className="rounded-2xl bg-white/10 px-4 py-3">
+                  <p className="text-xs opacity-70">Per day</p>
+                  <p className="font-semibold mt-1">{fmt(Math.round(breakdown.total / days))}</p>
+                </div>
+                <div className="rounded-2xl bg-white/10 px-4 py-3">
+                  <p className="text-xs opacity-70">Stay</p>
+                  <p className="font-semibold mt-1">{accommodation.label}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </PageLayout>
