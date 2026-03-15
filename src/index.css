@@ -106,3 +106,18 @@
     @apply font-display;
   }
 }
+
+/* Leaflet custom rich tooltip */
+.smart-trails-tooltip {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 10px 12px;
+  color: hsl(var(--foreground));
+  pointer-events: none;
+}
+
+.smart-trails-tooltip::before {
+  border-top-color: hsl(var(--border)) !important;
+}
