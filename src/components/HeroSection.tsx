@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { Link } from "react-router-dom";
 import heroImg from "@/assets/hero-nepal.jpg";
 
 const HeroSection = () => {
@@ -55,18 +54,18 @@ const HeroSection = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.45 }}
         >
-          <Link
-            to="/dashboard"
+          <a
+            href="#destinations"
             className="w-full sm:w-auto text-center bg-white text-foreground font-medium text-sm px-10 py-4 rounded-full hover:bg-white/90 transition-all"
           >
-            Open Live Map
-          </Link>
-          <Link
-            to="/budget"
+            Explore Destinations
+          </a>
+          <a
+            href="#services"
             className="w-full sm:w-auto text-center border border-white/20 text-white/70 font-medium text-sm px-10 py-4 rounded-full hover:bg-white/10 transition-all"
           >
-            Estimate Budget
-          </Link>
+            View Features
+          </a>
         </motion.div>
       </div>
 

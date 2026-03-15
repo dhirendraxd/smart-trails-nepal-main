@@ -1,24 +1,29 @@
 import { Link } from "react-router-dom";
 import { Mountain } from "lucide-react";
 
-const smoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+const smoothScroll = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+  if (!href.startsWith("#")) return;
   e.preventDefault();
-  if (!id || id === "#") return;
+  const id = href.slice(1);
+  if (!id) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
 };
 
 const footerLinks = {
   Tools: [
-    { label: "Live Heatmap", href: "/dashboard" },
-    { label: "Budget Estimator", href: "/budget" },
-    { label: "Trip Planner", href: "/trip" },
-    { label: "Packing Lists", href: "/dashboard" },
+    { label: "Live Heatmap", href: "#services" },
+    { label: "Budget Estimator", href: "#services" },
+    { label: "Trip Planner", href: "#services" },
+    { label: "Packing Lists", href: "#services" },
   ],
   Destinations: [
-    { label: "Kathmandu", href: "/dashboard?region=kathmandu" },
-    { label: "Pokhara", href: "/dashboard?region=pokhara" },
-    { label: "Everest Region", href: "/dashboard?region=everest" },
-    { label: "Annapurna", href: "/dashboard?region=annapurna" },
+    { label: "Kathmandu", href: "#destinations" },
+    { label: "Pokhara", href: "#destinations" },
+    { label: "Everest Region", href: "#destinations" },
+    { label: "Annapurna", href: "#destinations" },
   ],
   About: [
     { label: "How It Works", href: "#about" },
@@ -51,25 +56,13 @@ const Footer = () => {
               <ul className="space-y-2.5">
                 {links.map((link) => (
                   <li key={link.label}>
-                    {link.href.startsWith("/") ? (
-                      <Link
-                        to={link.href}
-                        className="text-primary-foreground/35 text-sm hover:text-primary-foreground/80 transition-colors"
-                      >
-                        {link.label}
-                      </Link>
-                    ) : (
-                      <a
-                        href={link.href}
-                        onClick={(e) => {
-                          const id = link.href.replace("#", "");
-                          if (id) smoothScroll(e, id);
-                        }}
-                        className="text-primary-foreground/35 text-sm hover:text-primary-foreground/80 transition-colors"
-                      >
-                        {link.label}
-                      </a>
-                    )}
+                    <a
+                      href={link.href}
+                      onClick={(e) => smoothScroll(e, link.href)}
+                      className="text-primary-foreground/35 text-sm hover:text-primary-foreground/80 transition-colors"
+                    >
+                      {link.label}
+                    </a>
                   </li>
                 ))}
               </ul>

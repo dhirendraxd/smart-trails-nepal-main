@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
 import { Map, CloudSun, Backpack, Wallet, Route, Compass, Shield, Download } from "lucide-react";
 
 const features = [
@@ -7,56 +6,56 @@ const features = [
     icon: Map,
     title: "Interactive Tourism Heatmap",
     description: "See real-time tourist density across Nepal's destinations on an interactive map. Identify crowded and less crowded places instantly.",
-    link: "/dashboard",
+    link: "#destinations",
     linkLabel: "Open Map",
   },
   {
     icon: CloudSun,
     title: "Tourist Flow Forecast",
     description: "Analyze tourism trends and predict short-term tourist activity. Know if a location will get busier or quieter in the coming weeks.",
-    link: "/dashboard",
+    link: "#destinations",
     linkLabel: "See Forecast",
   },
   {
     icon: Backpack,
     title: "Smart Travel Insights",
     description: "Get crowd conditions, weather data, packing suggestions, and recommendations for every destination — all in one place.",
-    link: "/dashboard",
+    link: "#services",
     linkLabel: "Try It",
   },
   {
     icon: Wallet,
     title: "Budget Estimator",
     description: "Estimate trip costs based on duration and accommodation. Toggle between USD and NPR with live exchange rates.",
-    link: "/budget",
+    link: "#services",
     linkLabel: "Estimate Budget",
   },
   {
     icon: Compass,
     title: "Alternative Destination Suggestions",
     description: "When a destination is crowded, discover similar but less crowded locations for a better experience without the congestion.",
-    link: "/dashboard",
+    link: "#destinations",
     linkLabel: "Explore",
   },
   {
     icon: Shield,
     title: "Smart SOS Safety System",
     description: "Set travel timers, add emergency contacts, and get altitude sickness warnings. SOS triggers automatically if you go offline too long.",
-    link: "/dashboard",
+    link: "#services",
     linkLabel: "Setup Safety",
   },
   {
     icon: Download,
     title: "Offline Travel Package",
     description: "Download offline maps, cultural guides, biodiversity info, and emergency tools for remote areas with limited connectivity.",
-    link: "/dashboard",
+    link: "#services",
     linkLabel: "Download",
   },
   {
     icon: Route,
     title: "Multi-Stop Trip Planner",
     description: "Build a custom itinerary by adding destinations, reordering stops, and getting permit and gear requirements for each region.",
-    link: "/trip",
+    link: "#services",
     linkLabel: "Plan Trip",
   },
 ];
@@ -108,12 +107,12 @@ const ServicesSection = () => {
               </div>
               <h3 className="font-display font-semibold text-lg mb-2">{feature.title}</h3>
               <p className="text-muted-foreground text-sm leading-relaxed mb-4">{feature.description}</p>
-              <Link
-                to={feature.link}
+              <a
+                href={feature.link}
                 className="text-xs font-medium text-primary hover:underline underline-offset-4"
               >
                 {feature.linkLabel} →
-              </Link>
+              </a>
             </motion.div>
           ))}
         </div>
