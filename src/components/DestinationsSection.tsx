@@ -708,17 +708,30 @@ const DestinationsSection = () => {
                       <div className="border-t border-border/70 px-2 pb-2 pt-1.5">
                         <div className="space-y-1">
                           {popularPlacesForDestination.map((item) => (
-                            <div key={item.id} className="rounded-md border border-sky-200/70 bg-sky-50/55 px-2 py-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-[11px] font-semibold text-foreground">{item.place.name}</p>
-                                <span className="rounded-sm border border-sky-200 bg-sky-100/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-900/75">
-                                  Popular
-                                </span>
+                            <div key={item.id} className="rounded-md border border-sky-200/70 bg-sky-50/55 px-2 py-1.5">
+                              <div className="flex items-start gap-2">
+                                {item.place.image && (
+                                  <img
+                                    src={item.place.image}
+                                    alt={item.place.name}
+                                    className="h-10 w-10 rounded-md object-cover shrink-0"
+                                    loading="lazy"
+                                  />
+                                )}
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[11px] font-semibold text-foreground truncate">{item.place.name}</p>
+                                    <span className="rounded-sm border border-sky-200 bg-sky-100/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-900/75">
+                                      Popular
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                    Best visit time: {item.place.duration}
+                                  </p>
+                                  <p className="mt-0.5 text-[10px] italic text-sky-900/75">{item.place.note}</p>
+                                </div>
                               </div>
-                              <p className="mt-0.5 text-[10px] text-muted-foreground">
-                                Best visit time: {item.place.duration}
-                              </p>
-                              <p className="mt-0.5 text-[10px] italic text-sky-900/75">{item.place.note}</p>
                             </div>
                           ))}
                         </div>

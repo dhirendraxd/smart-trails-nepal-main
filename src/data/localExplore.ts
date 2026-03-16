@@ -1,9 +1,16 @@
 import type { DifficultyLevel } from "@/data/destinations";
+import destKathmandu from "@/assets/dest-kathmandu.jpg";
+import destPokhara from "@/assets/dest-pokhara.jpg";
+import destEverest from "@/assets/dest-everest.jpg";
+import destChitwan from "@/assets/dest-chitwan.jpg";
+import destAnnapurna from "@/assets/dest-annapurna.jpg";
+import destLumbini from "@/assets/dest-lumbini.jpg";
 
 export type LocalExploreItem = {
   name: string;
   duration: string;
   note: string;
+  image?: string;
   difficulty?: DifficultyLevel;
 };
 
@@ -16,9 +23,24 @@ export type LocalExploreSet = {
 export const localExploreByDestination: Record<string, LocalExploreSet> = {
   kathmandu: {
     places: [
-      { name: "Patan Durbar Square", duration: "1.5-2 hrs", note: "Best for architecture walks and cafe breaks." },
-      { name: "Boudhanath Stupa", duration: "1-1.5 hrs", note: "Great for sunset prayer-wheel loops and rooftops." },
-      { name: "Bhaktapur Durbar Square", duration: "2-3 hrs", note: "Ideal for heritage lanes, pottery, and local sweets." },
+      {
+        name: "Patan Durbar Square",
+        duration: "1.5-2 hrs",
+        note: "Best for architecture walks and cafe breaks.",
+        image: destKathmandu,
+      },
+      {
+        name: "Boudhanath Stupa",
+        duration: "1-1.5 hrs",
+        note: "Great for sunset prayer-wheel loops and rooftops.",
+        image: destKathmandu,
+      },
+      {
+        name: "Bhaktapur Durbar Square",
+        duration: "2-3 hrs",
+        note: "Ideal for heritage lanes, pottery, and local sweets.",
+        image: destKathmandu,
+      },
     ],
     hikes: [
       {
@@ -51,9 +73,24 @@ export const localExploreByDestination: Record<string, LocalExploreSet> = {
   },
   pokhara: {
     places: [
-      { name: "Phewa Lakeside", duration: "1-2 hrs", note: "Perfect for relaxed walks, coffee stops, and boat views." },
-      { name: "World Peace Pagoda", duration: "1.5-2 hrs", note: "Strong Annapurna backdrop and calm hilltop atmosphere." },
-      { name: "Bindhyabasini Temple", duration: "45-60 min", note: "Quick spiritual stop with great local neighborhood access." },
+      {
+        name: "Phewa Lakeside",
+        duration: "1-2 hrs",
+        note: "Perfect for relaxed walks, coffee stops, and boat views.",
+        image: destPokhara,
+      },
+      {
+        name: "World Peace Pagoda",
+        duration: "1.5-2 hrs",
+        note: "Strong Annapurna backdrop and calm hilltop atmosphere.",
+        image: destPokhara,
+      },
+      {
+        name: "Bindhyabasini Temple",
+        duration: "45-60 min",
+        note: "Quick spiritual stop with great local neighborhood access.",
+        image: destPokhara,
+      },
     ],
     hikes: [
       {
@@ -86,9 +123,24 @@ export const localExploreByDestination: Record<string, LocalExploreSet> = {
   },
   everest: {
     places: [
-      { name: "Namche Bazaar", duration: "2-3 hrs", note: "Acclimatization hub with bakeries, gear shops, and viewpoints." },
-      { name: "Tengboche Monastery", duration: "1-1.5 hrs", note: "Iconic monastery setting with dramatic Ama Dablam backdrop." },
-      { name: "Kala Patthar Viewpoint", duration: "2-3 hrs round", note: "Premier Everest panorama for clear-morning climbs." },
+      {
+        name: "Namche Bazaar",
+        duration: "2-3 hrs",
+        note: "Acclimatization hub with bakeries, gear shops, and viewpoints.",
+        image: destEverest,
+      },
+      {
+        name: "Tengboche Monastery",
+        duration: "1-1.5 hrs",
+        note: "Iconic monastery setting with dramatic Ama Dablam backdrop.",
+        image: destEverest,
+      },
+      {
+        name: "Kala Patthar Viewpoint",
+        duration: "2-3 hrs round",
+        note: "Premier Everest panorama for clear-morning climbs.",
+        image: destEverest,
+      },
     ],
     hikes: [
       {
@@ -121,9 +173,24 @@ export const localExploreByDestination: Record<string, LocalExploreSet> = {
   },
   chitwan: {
     places: [
-      { name: "Sauraha Riverside", duration: "1-2 hrs", note: "Best for sunset river scenes and relaxed wildlife ambience." },
-      { name: "Tharu Cultural Museum", duration: "45-60 min", note: "Quick insight into local heritage before safari activities." },
-      { name: "Kasara Museum", duration: "45-60 min", note: "Useful primer for park history and species context." },
+      {
+        name: "Sauraha Riverside",
+        duration: "1-2 hrs",
+        note: "Best for sunset river scenes and relaxed wildlife ambience.",
+        image: destChitwan,
+      },
+      {
+        name: "Tharu Cultural Museum",
+        duration: "45-60 min",
+        note: "Quick insight into local heritage before safari activities.",
+        image: destChitwan,
+      },
+      {
+        name: "Kasara Museum",
+        duration: "45-60 min",
+        note: "Useful primer for park history and species context.",
+        image: destChitwan,
+      },
     ],
     hikes: [
       {
@@ -156,9 +223,24 @@ export const localExploreByDestination: Record<string, LocalExploreSet> = {
   },
   annapurna: {
     places: [
-      { name: "Manang Village", duration: "1-2 hrs", note: "High-altitude culture stop with bakeries and acclimatization views." },
-      { name: "Muktinath Temple", duration: "1-1.5 hrs", note: "Sacred mountain-site visit with dramatic dry landscapes." },
-      { name: "Ghandruk Village", duration: "1.5-2 hrs", note: "Stone lanes, Gurung culture, and classic Annapurna framing." },
+      {
+        name: "Manang Village",
+        duration: "1-2 hrs",
+        note: "High-altitude culture stop with bakeries and acclimatization views.",
+        image: destAnnapurna,
+      },
+      {
+        name: "Muktinath Temple",
+        duration: "1-1.5 hrs",
+        note: "Sacred mountain-site visit with dramatic dry landscapes.",
+        image: destAnnapurna,
+      },
+      {
+        name: "Ghandruk Village",
+        duration: "1.5-2 hrs",
+        note: "Stone lanes, Gurung culture, and classic Annapurna framing.",
+        image: destAnnapurna,
+      },
     ],
     hikes: [
       {
@@ -191,9 +273,24 @@ export const localExploreByDestination: Record<string, LocalExploreSet> = {
   },
   lumbini: {
     places: [
-      { name: "Maya Devi Temple", duration: "1-1.5 hrs", note: "Core pilgrimage landmark with meditative garden spaces." },
-      { name: "Monastic Zone", duration: "2-3 hrs", note: "Diverse global monastery architecture in one peaceful corridor." },
-      { name: "World Peace Pagoda", duration: "45-60 min", note: "Quiet reflection stop with broad surrounding views." },
+      {
+        name: "Maya Devi Temple",
+        duration: "1-1.5 hrs",
+        note: "Core pilgrimage landmark with meditative garden spaces.",
+        image: destLumbini,
+      },
+      {
+        name: "Monastic Zone",
+        duration: "2-3 hrs",
+        note: "Diverse global monastery architecture in one peaceful corridor.",
+        image: destLumbini,
+      },
+      {
+        name: "World Peace Pagoda",
+        duration: "45-60 min",
+        note: "Quiet reflection stop with broad surrounding views.",
+        image: destLumbini,
+      },
     ],
     hikes: [
       {
