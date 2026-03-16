@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L, { type DivIcon } from "leaflet";
 import { useSearchParams } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
@@ -10,6 +10,9 @@ import {
   type DestinationWithDistance,
 } from "@/data/destinations";
 import { getLocalExploreForDestination } from "@/data/localExplore";
+import ExploreChatbot from "@/components/ExploreChatbot";
+import ExploreFeaturePanel from "@/components/ExploreFeaturePanel";
+import { getDestinationForecast } from "@/lib/travelFeatureToolkit";
 
 const crowdColors: Record<CrowdLevel, { bg: string; text: string }> = {
   Quiet:    { bg: "#dcfce7", text: "#166534" },
@@ -92,15 +95,35 @@ const getDestinationMatches = (query: string, excludedId?: string | null) => {
 const getValidDestinationId = (value: string | null) =>
   destinations.some((destination) => destination.id === value) ? value : null;
 
+type ExploreFeatureKey = "forecast" | "insights" | "budget" | "alternatives" | "safety" | "offline" | "planner";
+
+const getValidFeatureKey = (value: string | null): ExploreFeatureKey | null => {
+  if (
+    value === "forecast" ||
+    value === "insights" ||
+    value === "budget" ||
+    value === "alternatives" ||
+    value === "safety" ||
+    value === "offline" ||
+    value === "planner"
+  ) {
+    return value;
+  }
+
+  return null;
+};
+
 const DestinationsSection = () => {
   const mapNodeRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const heatLayerRef = useRef<L.LayerGroup | null>(null);
   const userLocationLayerRef = useRef<L.LayerGroup | null>(null);
   const hasCenteredOnLiveRef = useRef(false);
   const plannerRef = useRef<HTMLDivElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedQueryId = searchParams.get("selected");
+  const activeFeatureKey = getValidFeatureKey(searchParams.get("feature"));
 
   const [selectedId, setSelectedId] = useState<string | null>(() => getValidDestinationId(selectedQueryId));
   const [fromId, setFromId] = useState<string | null>(null);
@@ -113,6 +136,7 @@ const DestinationsSection = () => {
   });
   const [activePlannerField, setActivePlannerField] = useState<"from" | "to" | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [isHeatmapEnabled, setIsHeatmapEnabled] = useState(true);
   const [liveLocation, setLiveLocation] = useState<LiveLocationState>({
     status: "locating",
     coords: null,
@@ -128,6 +152,11 @@ const DestinationsSection = () => {
   const selectedDestination = useMemo(
     () => destinations.find((destination) => destination.id === selectedId) ?? null,
     [selectedId],
+  );
+
+  const fromDestination = useMemo(
+    () => destinations.find((destination) => destination.id === fromId) ?? null,
+    [fromId],
   );
 
   const nearbyDestinations = useMemo(() => {
@@ -322,7 +351,7 @@ const DestinationsSection = () => {
     }
   }, [selectedQueryId]);
 
-  const syncSelectedQuery = (destinationId: string | null) => {
+  const syncSelectedQuery = useCallback((destinationId: string | null) => {
     setSearchParams(
       (currentParams) => {
         const nextParams = new URLSearchParams(currentParams);
@@ -337,9 +366,9 @@ const DestinationsSection = () => {
       },
       { replace: true },
     );
-  };
+  }, [setSearchParams]);
 
-  const handleSelectDestination = (destinationId: string) => {
+  const handleSelectDestination = useCallback((destinationId: string) => {
     const destination = destinations.find((item) => item.id === destinationId);
 
     setSelectedId(destinationId);
@@ -348,20 +377,20 @@ const DestinationsSection = () => {
       setToQuery(destination.name);
     }
     syncSelectedQuery(destinationId);
-  };
+  }, [syncSelectedQuery]);
 
-  const handleSelectFromDestination = (destinationId: string) => {
+  const handleSelectFromDestination = useCallback((destinationId: string) => {
     const destination = destinations.find((item) => item.id === destinationId);
 
     setFromId(destinationId);
     setFromQuery(destination?.name ?? "");
     setActivePlannerField(null);
-  };
+  }, []);
 
-  const handleSelectToDestination = (destinationId: string) => {
+  const handleSelectToDestination = useCallback((destinationId: string) => {
     handleSelectDestination(destinationId);
     setActivePlannerField(null);
-  };
+  }, [handleSelectDestination]);
 
   useEffect(() => {
     if (!mapNodeRef.current || mapRef.current) return;
@@ -397,6 +426,7 @@ const DestinationsSection = () => {
     }).addTo(map);
 
     markersLayerRef.current = L.layerGroup().addTo(map);
+  heatLayerRef.current = L.layerGroup().addTo(map);
     userLocationLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
@@ -435,6 +465,7 @@ const DestinationsSection = () => {
       map.remove();
       mapRef.current = null;
       markersLayerRef.current = null;
+      heatLayerRef.current = null;
       userLocationLayerRef.current = null;
     };
   }, []);
@@ -484,7 +515,33 @@ const DestinationsSection = () => {
       marker.addTo(markersLayer);
     });
 
-  }, [activeId, fromId]);
+  }, [activeId, fromId, handleSelectDestination]);
+
+  useEffect(() => {
+    const heatLayer = heatLayerRef.current;
+
+    if (!heatLayer) return;
+
+    heatLayer.clearLayers();
+
+    if (!isHeatmapEnabled) return;
+
+    destinations.forEach((destination) => {
+      const forecast = getDestinationForecast(destination);
+      const currentIntensity = forecast.crowdIndex[0];
+      const color = currentIntensity >= 75 ? "#ef4444" : currentIntensity >= 50 ? "#f59e0b" : "#22c55e";
+
+      L.circle(destination.coords, {
+        radius: 14000 + currentIntensity * 520,
+        color,
+        weight: destination.id === selectedId ? 1.8 : 1,
+        fillColor: color,
+        fillOpacity: destination.id === selectedId ? 0.26 : 0.18,
+        opacity: destination.id === selectedId ? 0.6 : 0.34,
+        interactive: false,
+      }).addTo(heatLayer);
+    });
+  }, [isHeatmapEnabled, selectedId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -537,12 +594,16 @@ const DestinationsSection = () => {
     mapRef.current?.flyToBounds(NEPAL_MAP_BOUNDS, { duration: 0.6, padding: MAP_FIT_PADDING });
   };
 
+  const handleResetMapView = () => {
+    mapRef.current?.flyToBounds(NEPAL_MAP_BOUNDS, { duration: 0.6, padding: MAP_FIT_PADDING });
+  };
+
   return (
     <section id="destinations" className="h-full bg-secondary/30">
       <div className="h-full w-full py-2 md:py-3 pl-2 md:pl-3 pr-0">
         <div className="rounded-2xl overflow-hidden border border-border bg-card h-full">
-          <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-            <div className="h-full p-3 md:p-4 flex flex-col border-b border-border lg:border-b-0 lg:border-r">
+          <div className="grid h-full grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-2 lg:grid-rows-1">
+            <div className="order-2 h-full min-h-0 p-3 md:p-4 flex flex-col border-t border-border lg:order-1 lg:border-t-0 lg:border-r">
               <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
                 <div ref={plannerRef} className="space-y-2">
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
@@ -633,6 +694,18 @@ const DestinationsSection = () => {
                 </div>
 
               </div>
+
+                  <ExploreFeaturePanel
+                    selectedDestination={selectedDestination}
+                    fromDestination={fromDestination}
+                    nearbyDestinations={nearbyDestinations}
+                    liveNearbyDestinations={liveNearbyDestinations}
+                    livePopularPlaces={livePopularPlaces}
+                    activeFeature={activeFeatureKey}
+                    isHeatmapEnabled={isHeatmapEnabled}
+                    onToggleHeatmap={() => setIsHeatmapEnabled((currentState) => !currentState)}
+                    onSelectDestination={handleSelectDestination}
+                  />
 
                 <div className="rounded-xl border border-border/70 bg-background/60 px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
@@ -756,12 +829,29 @@ const DestinationsSection = () => {
               </div>
             </div>
 
-            <div className="relative h-full min-h-[340px] bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0))]">
+            <div className="order-1 relative h-full min-h-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0))] lg:order-2 lg:min-h-[340px]">
               <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-full border border-white/55 bg-white/94 px-3 py-1.5 text-[11px] font-medium tracking-[0.12em] text-foreground/75 shadow-sm backdrop-blur-sm uppercase">
                 Drag Map • Click Pins
               </div>
+              <button
+                type="button"
+                onClick={handleResetMapView}
+                className="absolute left-4 top-14 z-[520] rounded-full border border-white/60 bg-white/95 px-3 py-1.5 text-[11px] font-medium text-foreground/80 shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
+              >
+                Nepal View
+              </button>
+              {isHeatmapEnabled && (
+                <div className="pointer-events-none absolute right-4 top-4 z-[500] rounded-xl border border-white/55 bg-white/94 px-3 py-2 text-[11px] shadow-sm backdrop-blur-sm">
+                  <p className="font-medium uppercase tracking-[0.12em] text-foreground/75">Crowd heatmap</p>
+                  <div className="mt-2 flex items-center gap-3 text-foreground/80">
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Quiet</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Moderate</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-500" /> Busy</span>
+                  </div>
+                </div>
+              )}
               {liveLocation.status === "ready" && (
-                <div className="pointer-events-none absolute left-4 top-14 z-[500] rounded-md border border-sky-200/80 bg-white/95 px-3 py-1.5 text-[11px] font-medium text-sky-900/80 shadow-sm backdrop-blur-sm">
+                <div className="pointer-events-none absolute left-4 top-24 z-[500] rounded-md border border-sky-200/80 bg-white/95 px-3 py-1.5 text-[11px] font-medium text-sky-900/80 shadow-sm backdrop-blur-sm">
                   Live location area active
                 </div>
               )}
@@ -770,6 +860,15 @@ const DestinationsSection = () => {
           </div>
         </div>
       </div>
+
+      <ExploreChatbot
+        selectedDestination={selectedDestination}
+        fromDestination={fromDestination}
+        nearbyDestinations={nearbyDestinations}
+        liveNearbyDestinations={liveNearbyDestinations}
+        livePopularPlaces={livePopularPlaces}
+        onFocusDestination={handleSelectDestination}
+      />
     </section>
   );
 };

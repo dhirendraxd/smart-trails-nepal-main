@@ -15,10 +15,37 @@ type PhotoInsightState = {
   error: string | null;
 };
 
+const PHOTO_INSIGHT_API_URL = import.meta.env.VITE_PHOTO_INSIGHT_API_URL ?? "/api/photo-insight";
+
 const crowdBadgeClass: Record<CrowdLevel, string> = {
   Quiet: "bg-secondary text-foreground",
   Moderate: "bg-accent text-foreground",
   Busy: "bg-primary/15 text-foreground",
+};
+
+const buildFallbackInsight = ({
+  destinationName,
+  destinationArea,
+  destinationType,
+  locationName,
+  bestViewTime,
+  crowd,
+}: {
+  destinationName: string;
+  destinationArea: string;
+  destinationType: string;
+  locationName: string;
+  bestViewTime: string;
+  crowd: CrowdLevel;
+}) => {
+  const crowdHint =
+    crowd === "Busy"
+      ? "expect active visitor flow"
+      : crowd === "Moderate"
+        ? "visitor traffic is usually manageable"
+        : "it is often calmer than major hotspots";
+
+  return `${locationName} highlights the ${destinationType.toLowerCase()} experience of ${destinationName} in ${destinationArea}. Best viewing is around ${bestViewTime}, and ${crowdHint}. Arrive a little early to secure your preferred angle and spend extra time observing local details around the viewpoint.`;
 };
 
 const DestinationPhotoGallery = ({
@@ -31,6 +58,7 @@ const DestinationPhotoGallery = ({
   const [insightsByPhoto, setInsightsByPhoto] = useState<Record<string, PhotoInsightState>>({});
 
   const activePhoto = activeIndex !== null ? photos[activeIndex] : null;
+  const activeInsight = activePhoto ? insightsByPhoto[activePhoto.id] : null;
 
   const closeLightbox = useCallback(() => {
     setActiveIndex(null);
@@ -53,75 +81,90 @@ const DestinationPhotoGallery = ({
   useEffect(() => {
     if (!activePhoto) return;
 
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      setInsightsByPhoto((current) => ({
-        ...current,
-        [activePhoto.id]: {
-          loading: false,
-          text: null,
-          error: "AI description unavailable. Add VITE_ANTHROPIC_API_KEY to enable it.",
-        },
-      }));
+    if (activeInsight?.loading || activeInsight?.text) {
       return;
     }
 
     const controller = new AbortController();
+
+    const fallbackInsight = buildFallbackInsight({
+      destinationName,
+      destinationArea,
+      destinationType,
+      locationName: activePhoto.locationName,
+      bestViewTime: activePhoto.bestViewTime,
+      crowd: activePhoto.crowd,
+    });
 
     setInsightsByPhoto((current) => ({
       ...current,
       [activePhoto.id]: { loading: true, text: null, error: null },
     }));
 
-    const prompt =
-      `You are a Nepal travel guide. A traveler opened a photo from ${destinationName} in ${destinationArea}. ` +
-      `Specific spot: ${activePhoto.locationName}. Destination type: ${destinationType}. ` +
-      `Current crowd level at this spot: ${activePhoto.crowd}. Best viewpoint time: ${activePhoto.bestViewTime}. ` +
-      "Respond in 2-3 concise sentences that clearly cover: (1) what makes this exact spot special, " +
-      "(2) what the traveler will experience standing here, and (3) one insider tip for visiting this viewpoint.";
-
-    fetch("https://api.anthropic.com/v1/messages", {
+    fetch(PHOTO_INSIGHT_API_URL, {
       method: "POST",
       headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
+        "Content-Type": "application/json",
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
-        max_tokens: 180,
-        messages: [{ role: "user", content: prompt }],
+        destinationName,
+        destinationArea,
+        destinationType,
+        locationName: activePhoto.locationName,
+        crowd: activePhoto.crowd,
+        bestViewTime: activePhoto.bestViewTime,
       }),
     })
-      .then((response) => response.json())
-      .then((data) => {
-        const text = data?.content?.[0]?.text?.trim();
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as { insight?: string; error?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Could not fetch live AI description for this photo.");
+        }
+
+        return payload?.insight?.trim() ?? "";
+      })
+      .then((text) => {
         setInsightsByPhoto((current) => ({
           ...current,
           [activePhoto.id]: {
             loading: false,
-            text: text && text.length > 0 ? text : "No AI description available for this spot right now.",
+            text: text && text.length > 0 ? text : fallbackInsight,
             error: null,
           },
         }));
       })
-      .catch((error: Error) => {
-        if (error.name === "AbortError") return;
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") return;
 
         setInsightsByPhoto((current) => ({
           ...current,
           [activePhoto.id]: {
             loading: false,
-            text: null,
-            error: "Could not fetch AI description for this photo.",
+            text: fallbackInsight,
+            error: null,
           },
         }));
       });
 
     return () => controller.abort();
-  }, [activePhoto, destinationArea, destinationName, destinationType]);
+  }, [activePhoto, activeInsight?.loading, activeInsight?.text, destinationArea, destinationName, destinationType]);
+
+  useEffect(() => {
+    if (activeIndex === null) return;
+
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [activeIndex]);
 
   useEffect(() => {
     if (activeIndex === null) return;
@@ -139,8 +182,6 @@ const DestinationPhotoGallery = ({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, closeLightbox, goToNext, goToPrevious]);
-
-  const activeInsight = activePhoto ? insightsByPhoto[activePhoto.id] : null;
 
   return (
     <>
